@@ -1,32 +1,37 @@
 """
 Sentiment Analysis Module
-Menganalisis sentimen berita crypto menggunakan keyword-based approach
-
-Phase 2a: Rule-based sentiment (simple, no ML dependencies)
-Phase 2b: ML-based sentiment (transformers + FinBERT) - optional upgrade
+Menganalisis sentimen berita crypto menggunakan TextBlob
 
 Dependencies:
-    - re: Regular expressions
-    - Optional: transformers, torch (untuk ML-based)
+    - textblob: Simple NLP library untuk sentiment analysis
+    - Optional: transformers, torch (untuk upgrade ke FinBERT)
+
+Usage:
+    analyzer = SentimentAnalyzer()
+    sentiment = analyzer.analyze("Bitcoin reaches new all-time high")
+    print(sentiment['score'])  # 0.75
+    print(sentiment['label'])  # 'BULLISH'
 """
 
-import re
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from loguru import logger
+
+try:
+    from textblob import TextBlob
+    TEXTBLOB_AVAILABLE = True
+except ImportError:
+    TEXTBLOB_AVAILABLE = False
+    logger.warning("⚠️  textblob not installed, sentiment analysis will use fallback")
 
 
 class SentimentAnalyzer:
     """
-    Menganalisis sentimen berita crypto
+    Menganalisis sentimen berita crypto menggunakan TextBlob
     
-    Menggunakan keyword-based approach untuk Phase 2
-    Bisa di-upgrade ke ML-based (FinBERT) di masa depan
+    TextBlob menggunakan pattern matching dan lexicon-based approach.
+    Lebih simple dan ringan dibandingkan ML-based approach.
     
-    Contoh penggunaan:
-        analyzer = SentimentAnalyzer()
-        sentiment = analyzer.analyze("Bitcoin reaches new all-time high")
-        print(sentiment['score'])  # 0.75
-        print(sentiment['label'])  # 'BULLISH'
+    Score range: -1.0 (very bearish) to +1.0 (very bullish)
     """
     
     def __init__(self, use_ml: bool = False):
@@ -35,123 +40,21 @@ class SentimentAnalyzer:
         
         Args:
             use_ml: Gunakan ML-based analysis (butuh transformers + torch)
-                   Default False untuk Phase 2a (rule-based)
+                   Default False untuk Phase 2a (TextBlob)
         """
         self.use_ml = use_ml
         self.model = None
         
-        # Keyword dictionaries untuk sentiment analysis
-        self.bullish_keywords = self._get_bullish_keywords()
-        self.bearish_keywords = self._get_bearish_keywords()
-        
         if use_ml:
             self._load_ml_model()
-    
-    def _get_bullish_keywords(self) -> Dict[str, float]:
-        """
-        Daftar keyword bullish dengan weight
-        
-        Returns:
-            Dictionary {keyword: weight}
-        """
-        return {
-            # Strong bullish
-            'bull': 1.0,
-            'bullish': 1.0,
-            'rally': 0.9,
-            'surge': 0.9,
-            'soar': 0.9,
-            'pump': 0.8,
-            'moon': 0.8,
-            'breakout': 0.8,
-            'all-time high': 1.0,
-            'ath': 0.9,
-            'record high': 1.0,
-            
-            # Medium bullish
-            'rise': 0.7,
-            'gain': 0.7,
-            'up': 0.5,
-            'increase': 0.6,
-            'grow': 0.6,
-            'adoption': 0.7,
-            'institutional': 0.6,
-            'etf approved': 0.9,
-            'etf approval': 0.9,
-            'buy': 0.6,
-            'accumulate': 0.7,
-            'support': 0.5,
-            'recovery': 0.6,
-            'rebound': 0.6,
-            'positive': 0.6,
-            'optimistic': 0.7,
-            'upgrade': 0.6,
-            'partnership': 0.5,
-            'launch': 0.5,
-            'success': 0.6,
-            
-            # Weak bullish
-            'hope': 0.4,
-            'potential': 0.4,
-            'opportunity': 0.4,
-            'promising': 0.5,
-        }
-    
-    def _get_bearish_keywords(self) -> Dict[str, float]:
-        """
-        Daftar keyword bearish dengan weight
-        
-        Returns:
-            Dictionary {keyword: weight}
-        """
-        return {
-            # Strong bearish
-            'bear': 1.0,
-            'bearish': 1.0,
-            'crash': 1.0,
-            'plunge': 0.9,
-            'dump': 0.9,
-            'collapse': 1.0,
-            'bubble': 0.8,
-            'scam': 0.9,
-            'hack': 0.8,
-            'ban': 0.9,
-            'regulation': 0.6,
-            'crackdown': 0.8,
-            
-            # Medium bearish
-            'fall': 0.7,
-            'drop': 0.7,
-            'down': 0.5,
-            'decrease': 0.6,
-            'decline': 0.7,
-            'sell': 0.6,
-            'sell-off': 0.8,
-            'correction': 0.5,
-            'resistance': 0.4,
-            'overbought': 0.6,
-            'negative': 0.6,
-            'pessimistic': 0.7,
-            'fear': 0.6,
-            'risk': 0.5,
-            'warning': 0.6,
-            'concern': 0.5,
-            'lawsuit': 0.7,
-            'investigation': 0.6,
-            'fraud': 0.9,
-            
-            # Weak bearish
-            'uncertain': 0.4,
-            'volatile': 0.4,
-            'risk': 0.4,
-            'threat': 0.5,
-        }
+        elif not TEXTBLOB_AVAILABLE:
+            logger.warning("⚠️  TextBlob not available, using fallback method")
     
     def _load_ml_model(self):
         """
         Load ML model (FinBERT) untuk sentiment analysis
         
-        Note: Butuh transformers dan torch
+        Note: Butuh transformers dan torch (~500MB)
         """
         try:
             from transformers import pipeline
@@ -165,7 +68,7 @@ class SentimentAnalyzer:
             logger.info("✅ FinBERT model loaded successfully")
             
         except ImportError:
-            logger.warning("⚠️  transformers/torch not installed, using rule-based only")
+            logger.warning("⚠️  transformers/torch not installed, using TextBlob only")
             self.use_ml = False
         except Exception as e:
             logger.error(f"❌ Error loading ML model: {e}")
@@ -186,90 +89,62 @@ class SentimentAnalyzer:
                 'score': 0.75,  # -1.0 to 1.0
                 'label': 'BULLISH',  # BULLISH, BEARISH, NEUTRAL
                 'confidence': 85,  # 0-100
-                'bullish_count': 5,
-                'bearish_count': 1,
-                'method': 'rule-based'  # atau 'ml-based'
+                'method': 'textblob'  # atau 'ml-based'
             }
         """
         if not text or len(text.strip()) == 0:
             return self._neutral_sentiment()
         
-        # Clean text
-        text = self._clean_text(text)
-        
         if self.use_ml and self.model:
             return self._analyze_ml(text)
+        elif TEXTBLOB_AVAILABLE:
+            return self._analyze_textblob(text)
         else:
-            return self._analyze_rule_based(text)
+            return self._analyze_fallback(text)
     
-    def _analyze_rule_based(self, text: str) -> Dict:
+    def _analyze_textblob(self, text: str) -> Dict:
         """
-        Analisis sentimen menggunakan rule-based approach
+        Analisis sentimen menggunakan TextBlob
         
-        Args:
-            text: Cleaned text
-        
-        Returns:
-            Sentiment analysis results
+        TextBlob polarity:
+        - -1.0 to 0.0: Negative (bearish)
+        - 0.0: Neutral
+        - 0.0 to 1.0: Positive (bullish)
         """
-        text_lower = text.lower()
-        
-        # Hitung bullish dan bearish scores
-        bullish_score = 0.0
-        bearish_score = 0.0
-        bullish_count = 0
-        bearish_count = 0
-        
-        # Check bullish keywords
-        for keyword, weight in self.bullish_keywords.items():
-            if keyword in text_lower:
-                bullish_score += weight
-                bullish_count += 1
-        
-        # Check bearish keywords
-        for keyword, weight in self.bearish_keywords.items():
-            if keyword in text_lower:
-                bearish_score += weight
-                bearish_count += 1
-        
-        # Calculate final score (-1.0 to 1.0)
-        total_score = bullish_score - bearish_score
-        max_possible = max(bullish_score + bearish_score, 1.0)
-        
-        # Normalize to -1.0 to 1.0
-        score = total_score / max_possible
-        score = max(-1.0, min(1.0, score))  # Clamp
-        
-        # Determine label
-        if score > 0.2:
-            label = 'BULLISH'
-        elif score < -0.2:
-            label = 'BEARISH'
-        else:
-            label = 'NEUTRAL'
-        
-        # Calculate confidence
-        total_keywords = bullish_count + bearish_count
-        confidence = min(100, int(total_keywords * 15))
-        
-        return {
-            'score': round(score, 3),
-            'label': label,
-            'confidence': confidence,
-            'bullish_count': bullish_count,
-            'bearish_count': bearish_count,
-            'method': 'rule-based',
-        }
+        try:
+            blob = TextBlob(text)
+            polarity = blob.sentiment.polarity  # -1.0 to 1.0
+            subjectivity = blob.sentiment.subjectivity  # 0.0 to 1.0
+            
+            # Determine label based on polarity
+            if polarity > 0.1:
+                label = 'BULLISH'
+            elif polarity < -0.1:
+                label = 'BEARISH'
+            else:
+                label = 'NEUTRAL'
+            
+            # Calculate confidence based on polarity strength and subjectivity
+            confidence = int(abs(polarity) * 100 * (0.5 + subjectivity * 0.5))
+            confidence = min(100, max(0, confidence))
+            
+            return {
+                'score': round(polarity, 3),
+                'label': label,
+                'confidence': confidence,
+                'subjectivity': round(subjectivity, 3),
+                'method': 'textblob',
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in TextBlob analysis: {e}")
+            return self._neutral_sentiment()
     
     def _analyze_ml(self, text: str) -> Dict:
         """
         Analisis sentimen menggunakan ML model (FinBERT)
         
-        Args:
-            text: Cleaned text
-        
-        Returns:
-            Sentiment analysis results
+        Note: Lebih akurat tapi butuh ~500MB dan startup lambat
         """
         try:
             # Truncate text if too long
@@ -300,8 +175,6 @@ class SentimentAnalyzer:
                 'score': round(final_score, 3),
                 'label': label,
                 'confidence': int(score * 100),
-                'bullish_count': 0,
-                'bearish_count': 0,
                 'method': 'ml-based',
             }
             
@@ -309,29 +182,40 @@ class SentimentAnalyzer:
             logger.error(f"Error in ML analysis: {e}")
             return self._neutral_sentiment()
     
-    def _clean_text(self, text: str) -> str:
+    def _analyze_fallback(self, text: str) -> Dict:
         """
-        Clean text untuk analisis
+        Fallback method jika TextBlob tidak tersedia
         
-        Args:
-            text: Raw text
-        
-        Returns:
-            Cleaned text
+        Simple keyword-based approach
         """
-        # Remove HTML tags
-        text = re.sub(r'<[^>]+>', '', text)
+        text_lower = text.lower()
         
-        # Remove URLs
-        text = re.sub(r'http\S+|www\S+', '', text)
+        # Simple keyword lists
+        bullish_words = ['bull', 'rise', 'gain', 'up', 'grow', 'buy', 'positive', 'success']
+        bearish_words = ['bear', 'fall', 'drop', 'down', 'decline', 'sell', 'negative', 'crash']
         
-        # Remove special characters (keep letters, numbers, spaces)
-        text = re.sub(r'[^a-zA-Z0-9\s]', ' ', text)
+        bullish_count = sum(1 for word in bullish_words if word in text_lower)
+        bearish_count = sum(1 for word in bearish_words if word in text_lower)
         
-        # Remove extra whitespace
-        text = ' '.join(text.split())
+        total = bullish_count + bearish_count
+        if total == 0:
+            return self._neutral_sentiment()
         
-        return text.strip()
+        score = (bullish_count - bearish_count) / total
+        
+        if score > 0.1:
+            label = 'BULLISH'
+        elif score < -0.1:
+            label = 'BEARISH'
+        else:
+            label = 'NEUTRAL'
+        
+        return {
+            'score': round(score, 3),
+            'label': label,
+            'confidence': min(100, int(total * 20)),
+            'method': 'fallback',
+        }
     
     def _neutral_sentiment(self) -> Dict:
         """Return neutral sentiment"""
@@ -339,9 +223,7 @@ class SentimentAnalyzer:
             'score': 0.0,
             'label': 'NEUTRAL',
             'confidence': 0,
-            'bullish_count': 0,
-            'bearish_count': 0,
-            'method': 'rule-based',
+            'method': 'none',
         }
     
     def analyze_multiple(self, texts: List[str]) -> Dict:
@@ -362,26 +244,20 @@ class SentimentAnalyzer:
         
         # Aggregate scores
         avg_score = sum(s['score'] for s in sentiments) / len(sentiments)
-        total_bullish = sum(s['bullish_count'] for s in sentiments)
-        total_bearish = sum(s['bearish_count'] for s in sentiments)
+        avg_confidence = sum(s['confidence'] for s in sentiments) / len(sentiments)
         
         # Determine label
-        if avg_score > 0.2:
+        if avg_score > 0.1:
             label = 'BULLISH'
-        elif avg_score < -0.2:
+        elif avg_score < -0.1:
             label = 'BEARISH'
         else:
             label = 'NEUTRAL'
-        
-        # Calculate confidence
-        avg_confidence = sum(s['confidence'] for s in sentiments) / len(sentiments)
         
         return {
             'score': round(avg_score, 3),
             'label': label,
             'confidence': int(avg_confidence),
-            'bullish_count': total_bullish,
-            'bearish_count': total_bearish,
             'method': 'aggregated',
             'count': len(sentiments),
         }

@@ -4,11 +4,39 @@ Analysis Engine adalah modul yang menganalisis data dari Data Collector dan meng
 
 ## 🎯 Fitur
 
-- ✅ **Technical Indicators** - RSI, MACD, EMA, Bollinger Bands, Volume
-- ✅ **Sentiment Analysis** - Rule-based (Phase 2a) dengan opsi ML-based (Phase 2b)
+- ✅ **Technical Indicators** - RSI, MACD, EMA, Bollinger Bands, Volume (menggunakan **pandas-ta**)
+- ✅ **Sentiment Analysis** - TextBlob (Phase 2a, simple & lightweight) dengan opsi FinBERT (Phase 2b, ML-based)
 - ✅ **Signal Generation** - Menggabungkan semua analisis menjadi trading signal
 - ✅ **Risk Management** - Stop-loss, take-profit, position sizing
 - ✅ **Confidence Scoring** - Weighted voting system
+
+## 📦 Dependencies
+
+### Technical Analysis
+- **pandas-ta** - Comprehensive technical analysis library
+  - Well-tested implementations
+  - 100+ indicators available
+  - Easy to use with pandas DataFrames
+
+### Sentiment Analysis
+- **TextBlob** (Phase 2a) - Simple NLP library
+  - Lightweight (~1MB)
+  - Pattern matching + lexicon-based
+  - Good for MVP
+  
+- **FinBERT** (Phase 2b, optional) - ML-based
+  - More accurate
+  - Requires ~500MB
+  - Slower startup (30-60s)
+
+### Upgrade ke FinBERT
+```bash
+# Uncomment di requirements.txt
+pip install transformers==4.36.2 torch==2.1.2
+
+# Update code
+generator = SignalGenerator(use_ml_sentiment=True)
+```
 
 ## 📁 Struktur File
 
@@ -71,7 +99,7 @@ python -m analysis.main_analysis
    Score: +0.720
    Label: BULLISH
    Confidence: 85%
-   Method: rule-based
+   Method: textblob
 ```
 
 ## 🔍 Penjelasan Komponen
@@ -109,16 +137,20 @@ python -m analysis.main_analysis
 
 ### 2. Sentiment Analysis (`sentiment_analysis.py`)
 
-#### Phase 2a: Rule-based (Current)
-- Menggunakan keyword matching
-- Bullish keywords: "bull", "rally", "surge", "adoption", dll
-- Bearish keywords: "bear", "crash", "plunge", "ban", dll
-- Score: -1.0 (bearish) sampai +1.0 (bullish)
+#### Phase 2a: TextBlob (Current)
+- Menggunakan **TextBlob** library
+- Pattern matching + lexicon-based approach
+- Lightweight (~1MB)
+- Polarity: -1.0 (bearish) sampai +1.0 (bullish)
+- Subjectivity: 0.0 (objective) sampai 1.0 (subjective)
+- Good untuk MVP dan quick testing
 
-#### Phase 2b: ML-based (Optional Upgrade)
-- Menggunakan FinBERT model
-- Butuh transformers + torch (~2.5GB)
-- Lebih akurat tapi lebih berat
+#### Phase 2b: FinBERT (Optional Upgrade)
+- Menggunakan **FinBERT** model (transformers)
+- ML-based, lebih akurat untuk financial text
+- Butuh transformers + torch (~500MB)
+- Startup lambat (30-60 detik pertama kali)
+- Lebih baik untuk production
 
 ### 3. Signal Generator (`signal_generator.py`)
 
@@ -236,11 +268,17 @@ generator = SignalGenerator(use_ml_sentiment=True)
 ```
 **Solusi**: Jalankan data collector lebih lama untuk mengumpulkan lebih banyak data
 
-### Error: "transformers not installed"
+### Error: "textblob not installed"
 ```
-⚠️  transformers/torch not installed, using rule-based only
+⚠️  textblob not installed, sentiment analysis will use fallback
 ```
-**Solusi**: Ini normal untuk Phase 2a. Install transformers jika ingin ML-based
+**Solusi**: Install textblob dengan `pip install textblob==0.17.1`
+
+### Error: "transformers not installed" (jika pakai FinBERT)
+```
+⚠️  transformers/torch not installed, using TextBlob only
+```
+**Solusi**: Ini normal untuk Phase 2a. Install transformers jika ingin upgrade ke FinBERT
 
 ### Signal selalu HOLD
 **Penyebab**: Data belum cukup atau market sideways
@@ -251,17 +289,22 @@ generator = SignalGenerator(use_ml_sentiment=True)
 
 ## 📚 Resources
 
+### Technical Analysis
+- [pandas-ta Documentation](https://github.com/twopirllc/pandas-ta)
 - [RSI Explanation](https://www.investopedia.com/terms/r/rsi.asp)
 - [MACD Tutorial](https://www.investopedia.com/terms/m/macd.asp)
 - [Bollinger Bands](https://www.investopedia.com/terms/b/bollingerbands.asp)
-- [FinBERT Model](https://huggingface.co/ProsusAI/finbert)
+
+### Sentiment Analysis
+- [TextBlob Documentation](https://textblob.readthedocs.io/)
+- [FinBERT Model](https://huggingface.co/ProsusAI/finbert) (optional upgrade)
 
 ## ✅ Status
 
 **Analysis Engine: COMPLETE ✅**
 
-- ✅ Technical indicators (RSI, MACD, EMA, BB, Volume)
-- ✅ Sentiment analysis (rule-based)
+- ✅ Technical indicators (RSI, MACD, EMA, BB, Volume) - menggunakan **pandas-ta**
+- ✅ Sentiment analysis - menggunakan **TextBlob** (simple & lightweight)
 - ✅ Signal generation
 - ✅ Risk management
 - ✅ Confidence scoring

@@ -147,6 +147,7 @@ python -m analysis.main_analysis
 
 ## 📦 Dependencies
 
+### Fase 1: Data Collection
 ```txt
 ccxt==4.2.25          # Binance API
 websockets==12.0      # WebSocket client
@@ -159,7 +160,19 @@ python-dotenv==1.0.0  # Environment variables
 loguru==0.7.2         # Logging
 ```
 
-**Total: 9 packages (~150MB)**
+### Fase 2: Analysis Engine
+```txt
+pandas-ta==0.3.14b    # Technical analysis (RSI, MACD, EMA, BB)
+textblob==0.17.1      # Sentiment analysis (simple & lightweight)
+```
+
+**Optional (untuk upgrade ke ML-based sentiment):**
+```txt
+# transformers==4.36.2  # FinBERT model (~500MB)
+# torch==2.1.2          # PyTorch
+```
+
+**Total: 11 packages (~200MB)**
 
 ## 🔧 Konfigurasi
 
@@ -195,7 +208,7 @@ Menjalankan semua collectors secara bersamaan.
 ### Analysis Engine (Fase 2)
 
 #### 6. `technical_indicators.py` - Technical Analysis
-Menghitung indikator teknikal:
+Menghitung indikator teknikal menggunakan **pandas-ta**:
 - **RSI** (Relative Strength Index) - Mengukur overbought/oversold
 - **MACD** (Moving Average Convergence Divergence) - Mengukur momentum
 - **EMA** (Exponential Moving Average) - Mengukur trend
@@ -204,8 +217,8 @@ Menghitung indikator teknikal:
 
 #### 7. `sentiment_analysis.py` - Sentiment Analysis
 Menganalisis sentimen berita crypto:
-- **Phase 2a**: Rule-based (keyword matching, no ML dependencies)
-- **Phase 2b**: ML-based (FinBERT, optional upgrade)
+- **Phase 2a**: TextBlob (simple, lightweight, ~1MB)
+- **Phase 2b**: FinBERT (ML-based, optional upgrade, ~500MB)
 
 #### 8. `signal_generator.py` - Signal Generation
 Menggabungkan technical + sentiment menjadi trading signal:

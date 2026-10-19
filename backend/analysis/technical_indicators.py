@@ -4,24 +4,27 @@ Menghitung RSI, MACD, EMA, Bollinger Bands, dan Volume Analysis
 
 Dependencies:
     - pandas: Data manipulation
-    - ta: Technical analysis library (lebih simple dari TA-Lib)
+    - pandas-ta: Technical analysis library (comprehensive & well-tested)
+
+Usage:
+    ti = TechnicalIndicators()
+    indicators = ti.calculate_all(candles_df)
+    print(indicators['rsi'])  # 65.5
+    print(indicators['signal'])  # 'BUY'
 """
 
 import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional
+import pandas_ta as ta
+from typing import Dict
 from loguru import logger
 
 
 class TechnicalIndicators:
     """
-    Menghitung indikator teknikal dari data candlestick
+    Menghitung indikator teknikal dari data candlestick menggunakan pandas-ta
     
-    Contoh penggunaan:
-        ti = TechnicalIndicators()
-        indicators = ti.calculate_all(candles_df)
-        print(indicators['rsi'])  # 65.5
-        print(indicators['signal'])  # 'BUY'
+    pandas-ta adalah library yang comprehensive dan well-tested untuk technical analysis.
+    Lebih reliable daripada implementasi manual.
     """
     
     def __init__(self):
@@ -60,7 +63,7 @@ class TechnicalIndicators:
             return self._empty_indicators()
         
         try:
-            # Hitung semua indikator
+            # Hitung semua indikator menggunakan pandas-ta
             rsi = self._calculate_rsi(df)
             macd = self._calculate_macd(df)
             ema = self._calculate_ema(df)
@@ -89,31 +92,17 @@ class TechnicalIndicators:
     
     def _calculate_rsi(self, df: pd.DataFrame, period: int = 14) -> Dict:
         """
-        Hitung RSI (Relative Strength Index)
+        Hitung RSI (Relative Strength Index) menggunakan pandas-ta
         
         RSI mengukur kecepatan dan perubahan pergerakan harga
         - RSI > 70: Overbought (potensi turun)
         - RSI < 30: Oversold (potensi naik)
         - RSI 30-70: Netral
-        
-        Args:
-            df: DataFrame dengan kolom 'close'
-            period: Periode RSI (default 14)
-        
-        Returns:
-            Dictionary dengan rsi value dan signal
         """
         try:
-            # Hitung RSI manual (lebih reliable dari library)
-            delta = df['close'].diff()
-            
-            gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-            
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs))
-            
-            rsi_value = rsi.iloc[-1]
+            # Calculate RSI using pandas-ta
+            rsi_series = ta.rsi(df['close'], length=period)
+            rsi_value = rsi_series.iloc[-1]
             
             # Tentukan signal
             if rsi_value > 70:
@@ -135,51 +124,33 @@ class TechnicalIndicators:
     def _calculate_macd(self, df: pd.DataFrame, 
                         fast: int = 12, slow: int = 26, signal: int = 9) -> Dict:
         """
-        Hitung MACD (Moving Average Convergence Divergence)
+        Hitung MACD (Moving Average Convergence Divergence) menggunakan pandas-ta
         
         MACD mengukur momentum dan trend
         - MACD > Signal Line: Bullish (potensi naik)
         - MACD < Signal Line: Bearish (potensi turun)
-        
-        Args:
-            df: DataFrame dengan kolom 'close'
-            fast: Periode EMA cepat (default 12)
-            slow: Periode EMA lambat (default 26)
-            signal: Periode signal line (default 9)
-        
-        Returns:
-            Dictionary dengan macd value dan signal
         """
         try:
-            # Hitung EMA
-            ema_fast = df['close'].ewm(span=fast, adjust=False).mean()
-            ema_slow = df['close'].ewm(span=slow, adjust=False).mean()
+            # Calculate MACD using pandas-ta
+            macd_df = ta.macd(df['close'], fast=fast, slow=slow, signal=signal)
             
-            # MACD line
-            macd_line = ema_fast - ema_slow
-            
-            # Signal line
-            signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-            
-            # Histogram
-            histogram = macd_line - signal_line
-            
-            macd_value = macd_line.iloc[-1]
-            signal_value = signal_line.iloc[-1]
-            histogram_value = histogram.iloc[-1]
+            # Extract values
+            macd_line = macd_df.iloc[:, 0].iloc[-1]  # MACD line
+            macd_signal_line = macd_df.iloc[:, 1].iloc[-1]  # Signal line
+            macd_histogram = macd_df.iloc[:, 2].iloc[-1]  # Histogram
             
             # Tentukan signal
-            if macd_value > signal_value and histogram_value > 0:
+            if macd_line > macd_signal_line and macd_histogram > 0:
                 macd_signal = 'BUY'
-            elif macd_value < signal_value and histogram_value < 0:
+            elif macd_line < macd_signal_line and macd_histogram < 0:
                 macd_signal = 'SELL'
             else:
                 macd_signal = 'NEUTRAL'
             
             return {
-                'macd': round(macd_value, 2),
-                'macd_signal_line': round(signal_value, 2),
-                'macd_histogram': round(histogram_value, 2),
+                'macd': round(macd_line, 2),
+                'macd_signal_line': round(macd_signal_line, 2),
+                'macd_histogram': round(macd_histogram, 2),
                 'macd_signal': macd_signal,
             }
             
@@ -189,23 +160,17 @@ class TechnicalIndicators:
     
     def _calculate_ema(self, df: pd.DataFrame) -> Dict:
         """
-        Hitung EMA (Exponential Moving Average)
+        Hitung EMA (Exponential Moving Average) menggunakan pandas-ta
         
         EMA memberikan weight lebih besar pada data terbaru
         - Price > EMA 20 > EMA 50 > EMA 200: Strong uptrend
         - Price < EMA 20 < EMA 50 < EMA 200: Strong downtrend
-        
-        Args:
-            df: DataFrame dengan kolom 'close'
-        
-        Returns:
-            Dictionary dengan EMA values dan signal
         """
         try:
-            # Hitung EMA untuk berbagai periode
-            ema_20 = df['close'].ewm(span=20, adjust=False).mean().iloc[-1]
-            ema_50 = df['close'].ewm(span=50, adjust=False).mean().iloc[-1]
-            ema_200 = df['close'].ewm(span=200, adjust=False).mean().iloc[-1]
+            # Calculate EMAs using pandas-ta
+            ema_20 = ta.ema(df['close'], length=20).iloc[-1]
+            ema_50 = ta.ema(df['close'], length=50).iloc[-1]
+            ema_200 = ta.ema(df['close'], length=200).iloc[-1]
             
             current_price = df['close'].iloc[-1]
             
@@ -231,35 +196,20 @@ class TechnicalIndicators:
     def _calculate_bollinger_bands(self, df: pd.DataFrame, 
                                     period: int = 20, std_dev: int = 2) -> Dict:
         """
-        Hitung Bollinger Bands
+        Hitung Bollinger Bands menggunakan pandas-ta
         
         Bollinger Bands mengukur volatilitas
         - Price dekat upper band: Overbought
         - Price dekat lower band: Oversold
         - Bands menyempit: Low volatility (potensi breakout)
-        
-        Args:
-            df: DataFrame dengan kolom 'close'
-            period: Periode SMA (default 20)
-            std_dev: Standard deviation multiplier (default 2)
-        
-        Returns:
-            Dictionary dengan BB values dan signal
         """
         try:
-            # Hitung middle band (SMA)
-            middle = df['close'].rolling(window=period).mean()
+            # Calculate Bollinger Bands using pandas-ta
+            bbands = ta.bbands(df['close'], length=period, std=std_dev)
             
-            # Hitung standard deviation
-            std = df['close'].rolling(window=period).std()
-            
-            # Hitung upper dan lower bands
-            upper = middle + (std * std_dev)
-            lower = middle - (std * std_dev)
-            
-            bb_upper = upper.iloc[-1]
-            bb_middle = middle.iloc[-1]
-            bb_lower = lower.iloc[-1]
+            bb_upper = bbands.iloc[:, 0].iloc[-1]  # Upper band
+            bb_middle = bbands.iloc[:, 1].iloc[-1]  # Middle band (SMA)
+            bb_lower = bbands.iloc[:, 2].iloc[-1]  # Lower band
             
             current_price = df['close'].iloc[-1]
             
@@ -294,13 +244,6 @@ class TechnicalIndicators:
         - Volume tinggi + price naik: Strong bullish
         - Volume tinggi + price turun: Strong bearish
         - Volume rendah: Weak movement
-        
-        Args:
-            df: DataFrame dengan kolom 'volume' dan 'close'
-            period: Periode untuk average volume (default 20)
-        
-        Returns:
-            Dictionary dengan volume metrics dan signal
         """
         try:
             # Hitung average volume
@@ -341,12 +284,6 @@ class TechnicalIndicators:
         - Setiap indikator vote BUY/SELL/NEUTRAL
         - Signal final berdasarkan majority vote
         - Confidence berdasarkan consensus
-        
-        Args:
-            indicators: Dictionary dengan semua indikator
-        
-        Returns:
-            Tuple (signal, confidence)
         """
         try:
             # Kumpulkan semua signals

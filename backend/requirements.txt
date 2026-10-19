@@ -18,12 +18,16 @@ numpy==1.26.2
 # ============================================
 # Technical Analysis
 # ============================================
-ta==0.11.0
+pandas-ta==0.3.14b
 
 # ============================================
-# Sentiment Analysis (untuk Fase 2, install nanti)
+# Sentiment Analysis
 # ============================================
-# Uncomment baris berikut saat ready untuk ML-based sentiment:
+# Opsi 1: Simple (ringan, untuk MVP cepat)
+textblob==0.17.1
+
+# Opsi 2: Advanced (FinBERT - lebih akurat, butuh ~500MB)
+# Uncomment jika ingin upgrade ke ML-based:
 # transformers==4.36.2
 # torch==2.1.2
 
@@ -42,9 +46,3 @@ aiosqlite==0.19.0
 # ============================================
 python-dotenv==1.0.0
 loguru==0.7.2
-
-# ============================================
-# Testing (opsional)
-# ============================================
-# pytest==7.4.4
-# pytest-asyncio==0.23.3
