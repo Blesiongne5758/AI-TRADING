@@ -142,9 +142,14 @@ class PaperTradingEngine:
             if ticker:
                 current_prices[symbol] = ticker['price']
         
-        # 2. Check existing positions for SL/TP
-        if self.portfolio.open_positions:
-            await self.executor.check_and_close_positions(current_prices)
+        # 2. Check existing positions for SL/TP (per symbol)
+        for symbol, current_price in current_prices.items():
+            try:
+                exit_result = await self.executor.check_exit_conditions(symbol, current_price)
+                if exit_result:
+                    logger.info(f"✅ {symbol}: Position closed - {exit_result['exit_reason']}")
+            except Exception as e:
+                logger.error(f"❌ Error checking exit for {symbol}: {e}")
         
         # 3. Analyze each symbol
         trades_executed = 0
@@ -171,7 +176,47 @@ class PaperTradingEngine:
         logger.info(f"\n{'='*70}")
         logger.info(f"📊 Cycle Summary: {trades_executed} trades executed")
         logger.info(f"{'='*70}")
-        self.executor.print_execution_summary()
+        self._print_portfolio_summary()
+    
+    def _print_portfolio_summary(self):
+        """Print portfolio summary dengan daily stats"""
+        summary = self.portfolio.get_portfolio_summary()
+        
+        logger.info("\n" + "="*70)
+        logger.info("💼 PORTFOLIO SUMMARY")
+        logger.info("="*70)
+        
+        # Balance Info
+        logger.info("\n💰 BALANCE:")
+        logger.info(f"   Initial Balance: ${summary['initial_balance']:,.2f}")
+        logger.info(f"   Available Balance: ${summary['available_balance']:,.2f}")
+        logger.info(f"   Total Balance: ${summary['total_balance']:,.2f}")
+        logger.info(f"   Total Return: {summary['total_return_percent']:+.2f}%")
+        
+        # P&L Info
+        logger.info("\n📈 PROFIT & LOSS:")
+        logger.info(f"   Unrealized P&L: ${summary['unrealized_pnl']:+,.2f}")
+        logger.info(f"   Realized P&L: ${summary['realized_pnl']:+,.2f}")
+        logger.info(f"   Peak Balance: ${summary['peak_balance']:,.2f}")
+        logger.info(f"   Max Drawdown: {summary['max_drawdown_percent']:.2f}%")
+        
+        # Daily Stats
+        logger.info("\n📊 DAILY STATS:")
+        logger.info(f"   Daily P&L: ${self.risk_manager.daily_pnl:+,.2f}")
+        logger.info(f"   Daily Trades: {self.risk_manager.daily_trades}")
+        daily_loss_limit = self.portfolio.initial_balance * (self.risk_manager.max_daily_loss_percent / 100)
+        logger.info(f"   Daily Loss Limit: -${daily_loss_limit:.2f} ({self.risk_manager.max_daily_loss_percent}%)")
+        
+        # Risk Parameters
+        logger.info("\n🛡️  RISK PARAMETERS:")
+        logger.info(f"   Max Risk per Trade: {self.risk_manager.max_risk_per_trade_percent}%")
+        logger.info(f"   Max Open Positions: {self.risk_manager.max_open_positions}")
+        logger.info(f"   Max Position Size: {self.risk_manager.max_position_size_percent}%")
+        logger.info(f"   Min Confidence: {self.risk_manager.min_confidence_threshold}%")
+        logger.info(f"   Trading Fee: {self.executor.TRADING_FEE_PERCENT}%")
+        logger.info(f"   Open Positions: {summary['open_positions']}/{self.risk_manager.max_open_positions}")
+        
+        logger.info("\n" + "="*70 + "\n")
 
     async def run_continuous(self):
         """Jalankan continuous trading loop"""
@@ -206,7 +251,7 @@ class PaperTradingEngine:
         logger.info("\n" + "="*70)
         logger.info("📊 FINAL PORTFOLIO SUMMARY")
         logger.info("="*70)
-        self.executor.print_execution_summary()
+        self._print_portfolio_summary()
 
     async def run_once(self):
         """Jalankan satu cycle saja (untuk testing)"""
