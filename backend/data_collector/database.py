@@ -106,10 +106,69 @@ class DatabaseManager:
                 )
             """)
 
+            # Tabel untuk posisi trading (paper trading)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS positions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    side TEXT NOT NULL,
+                    entry_price REAL NOT NULL,
+                    quantity REAL NOT NULL,
+                    stop_loss REAL NOT NULL,
+                    take_profit REAL NOT NULL,
+                    signal_id TEXT,
+                    opened_at TEXT NOT NULL,
+                    closed_at TEXT,
+                    exit_price REAL,
+                    pnl REAL,
+                    pnl_percent REAL,
+                    close_reason TEXT,
+                    status TEXT NOT NULL DEFAULT 'OPEN'
+                )
+            """)
+
+            # Tabel untuk riwayat trading (paper trading)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS trades (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    side TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    quantity REAL NOT NULL,
+                    total REAL NOT NULL,
+                    pnl REAL,
+                    pnl_percent REAL,
+                    reason TEXT,
+                    timestamp TEXT NOT NULL,
+                    signal_id TEXT,
+                    position_id INTEGER
+                )
+            """)
+
+            # Tabel untuk saldo portfolio (paper trading)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS portfolio_balance (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    balance REAL NOT NULL,
+                    last_updated TEXT NOT NULL
+                )
+            """)
+
             # Index untuk mempercepat query
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_candles_symbol_timeframe
                 ON candles(symbol, timeframe, timestamp)
+            """)
+
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_positions_symbol_status
+                ON positions(symbol, status)
+            """)
+
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trades_timestamp
+                ON trades(timestamp)
             """)
 
             await db.commit()
@@ -412,6 +471,192 @@ class DatabaseManager:
             cursor = await db.execute("SELECT COUNT(*) as count FROM news")
             row = await cursor.fetchone()
             return row[0] if row else 0
+
+    # ============================================
+    # PAPER TRADING OPERATIONS
+    # ============================================
+
+    async def get_open_positions(self) -> List[Dict]:
+        """
+        Mengambil semua posisi yang masih terbuka.
+        
+        Returns:
+            List of position dictionaries
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """
+                SELECT id, symbol, side, entry_price, quantity, stop_loss, take_profit,
+                       signal_id, opened_at, status
+                FROM positions
+                WHERE status = 'OPEN'
+                ORDER BY opened_at DESC
+                """
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def get_trade_history(self, limit: int = 100) -> List[Dict]:
+        """
+        Mengambil riwayat trading.
+        
+        Args:
+            limit: Jumlah trade maksimum (default 100)
+        
+        Returns:
+            List of trade dictionaries
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """
+                SELECT id, symbol, side, type, price, quantity, total, pnl, pnl_percent,
+                       reason, timestamp, signal_id, position_id
+                FROM trades
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (limit,)
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def get_current_balance(self) -> float:
+        """
+        Mengambil saldo portfolio saat ini.
+        
+        Returns:
+            Current balance
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT balance FROM portfolio_balance WHERE id = 1"
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else 10000.0  # Default initial balance
+
+    async def create_position(self, position: Dict) -> int:
+        """
+        Membuat posisi baru.
+        
+        Args:
+            position: Position dictionary
+        
+        Returns:
+            Position ID
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                INSERT INTO positions 
+                (symbol, side, entry_price, quantity, stop_loss, take_profit, signal_id, opened_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    position['symbol'],
+                    position['side'],
+                    position['entry_price'],
+                    position['quantity'],
+                    position['stop_loss'],
+                    position['take_profit'],
+                    position.get('signal_id'),
+                    position['opened_at'],
+                    position['status']
+                )
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    async def close_position(
+        self,
+        position_id: int,
+        exit_price: float,
+        pnl: float,
+        pnl_percent: float,
+        reason: str
+    ) -> None:
+        """
+        Menutup posisi.
+        
+        Args:
+            position_id: Position ID
+            exit_price: Harga exit
+            pnl: Profit/Loss
+            pnl_percent: P&L percentage
+            reason: Alasan close (MANUAL, STOP_LOSS, TAKE_PROFIT, SIGNAL)
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                UPDATE positions
+                SET exit_price = ?, pnl = ?, pnl_percent = ?, 
+                    close_reason = ?, closed_at = ?, status = 'CLOSED'
+                WHERE id = ?
+                """,
+                (
+                    exit_price,
+                    pnl,
+                    pnl_percent,
+                    reason,
+                    datetime.now().isoformat(),
+                    position_id
+                )
+            )
+            await db.commit()
+
+    async def create_trade(self, trade: Dict) -> int:
+        """
+        Mencatat trade.
+        
+        Args:
+            trade: Trade dictionary
+        
+        Returns:
+            Trade ID
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                INSERT INTO trades 
+                (symbol, side, type, price, quantity, total, pnl, pnl_percent, 
+                 reason, timestamp, signal_id, position_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trade['symbol'],
+                    trade['side'],
+                    trade['type'],
+                    trade['price'],
+                    trade['quantity'],
+                    trade['total'],
+                    trade.get('pnl'),
+                    trade.get('pnl_percent'),
+                    trade.get('reason'),
+                    trade['timestamp'],
+                    trade.get('signal_id'),
+                    trade.get('position_id')
+                )
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    async def update_balance(self, balance: float) -> None:
+        """
+        Update saldo portfolio.
+        
+        Args:
+            balance: New balance
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO portfolio_balance (id, balance, last_updated)
+                VALUES (1, ?, ?)
+                """,
+                (balance, datetime.now().isoformat())
+            )
+            await db.commit()
 
 
 # ============================================
