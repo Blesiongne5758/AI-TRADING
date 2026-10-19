@@ -1,126 +1,103 @@
 """
-Portfolio API Routes
-Endpoints untuk portfolio management
+Portfolio Routes
+Endpoints untuk mengelola portfolio
 """
-from fastapi import APIRouter, HTTPException
-from typing import Dict, List
-from loguru import logger
-from data_collector.database import DatabaseManager
-from paper_trading.portfolio_manager import PortfolioManager
+from fastapi import APIRouter, Depends, Request
+from typing import List, Dict
 
 router = APIRouter()
 
-# Initialize database manager
-db = DatabaseManager()
-
 
 @router.get("/summary")
-async def get_portfolio_summary() -> Dict:
-    """
-    Get portfolio summary
+async def get_portfolio_summary(request: Request):
+    """Mengambil ringkasan portfolio"""
+    portfolio_manager = request.app.state.portfolio_manager
+    db = request.app.state.db
     
-    Returns:
-        Dictionary dengan summary portfolio
-    """
-    try:
-        await db.initialize()
-        stats = await db.get_portfolio_stats()
-        
-        # Get open positions
-        positions = await db.get_open_positions()
-        
-        # Calculate current balance
-        balance = await db.get_current_balance()
-        
-        return {
-            "balance": balance,
-            "stats": stats,
-            "open_positions": len(positions),
-            "positions": positions,
-        }
-    except Exception as e:
-        logger.error(f"❌ Error getting portfolio summary: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    summary = portfolio_manager.get_portfolio_summary()
+    stats = await db.get_portfolio_stats()
+    
+    return {
+        "summary": summary,
+        "stats": stats,
+    }
 
 
 @router.get("/positions")
-async def get_positions(status: str = "OPEN") -> List[Dict]:
-    """
-    Get positions by status
+async def get_open_positions(request: Request):
+    """Mengambil semua posisi terbuka"""
+    db = request.app.state.db
+    positions = await db.get_open_positions()
     
-    Args:
-        status: OPEN or CLOSED
-    
-    Returns:
-        List of positions
-    """
-    try:
-        await db.initialize()
+    # Tambahkan current price & PnL
+    enriched_positions = []
+    for pos in positions:
+        ticker = await db.get_ticker(pos["symbol"])
+        current_price = ticker["price"] if ticker else pos["entry_price"]
         
-        if status == "OPEN":
-            positions = await db.get_open_positions()
+        if pos["side"] == "long":
+            pnl = (current_price - pos["entry_price"]) * pos["quantity"]
         else:
-            # Get closed positions from trades
-            positions = []  # TODO: Implement get_closed_positions
+            pnl = (pos["entry_price"] - current_price) * pos["quantity"]
         
-        return positions
-    except Exception as e:
-        logger.error(f"❌ Error getting positions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/trades")
-async def get_trades(limit: int = 50) -> List[Dict]:
-    """
-    Get trade history
+        pnl_percent = (pnl / (pos["entry_price"] * pos["quantity"])) * 100
+        
+        enriched_positions.append({
+            **pos,
+            "current_price": current_price,
+            "pnl": pnl,
+            "pnl_percent": pnl_percent,
+        })
     
-    Args:
-        limit: Maximum number of trades to return
-    
-    Returns:
-        List of trades
-    """
-    try:
-        await db.initialize()
-        trades = await db.get_trade_history(limit=limit)
-        return trades
-    except Exception as e:
-        logger.error(f"❌ Error getting trades: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"positions": enriched_positions}
 
 
-@router.get("/stats")
-async def get_portfolio_stats() -> Dict:
-    """
-    Get portfolio statistics
+@router.get("/history")
+async def get_trade_history(request: Request, limit: int = 50):
+    """Mengambil riwayat trade"""
+    db = request.app.state.db
     
-    Returns:
-        Dictionary dengan statistics
-    """
-    try:
-        await db.initialize()
-        stats = await db.get_portfolio_stats()
-        return stats
-    except Exception as e:
-        logger.error(f"❌ Error getting portfolio stats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    import aiosqlite
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        cursor = await conn.execute(
+            """
+            SELECT * FROM positions 
+            WHERE status = 'CLOSED'
+            ORDER BY close_time DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+        trades = [dict(row) for row in rows]
+    
+    return {"trades": trades, "count": len(trades)}
 
 
-@router.get("/snapshots")
-async def get_portfolio_snapshots(limit: int = 100) -> List[Dict]:
-    """
-    Get portfolio snapshots for equity curve
+@router.get("/equity-curve")
+async def get_equity_curve(request: Request, hours: int = 24):
+    """Mengambil data equity curve"""
+    db = request.app.state.db
     
-    Args:
-        limit: Maximum number of snapshots
+    import aiosqlite
+    from datetime import datetime, timedelta
     
-    Returns:
-        List of snapshots
-    """
-    try:
-        await db.initialize()
-        snapshots = await db.get_portfolio_snapshots(limit=limit)
-        return snapshots
-    except Exception as e:
-        logger.error(f"❌ Error getting snapshots: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    async with aiosqlite.connect(db.db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        
+        cutoff_time = int((datetime.now() - timedelta(hours=hours)).timestamp() * 1000)
+        
+        cursor = await conn.execute(
+            """
+            SELECT timestamp, total_balance, unrealized_pnl, realized_pnl
+            FROM portfolio_snapshots
+            WHERE timestamp > ?
+            ORDER BY timestamp ASC
+            """,
+            (cutoff_time,),
+        )
+        rows = await cursor.fetchall()
+        snapshots = [dict(row) for row in rows]
+    
+    return {"snapshots": snapshots}
