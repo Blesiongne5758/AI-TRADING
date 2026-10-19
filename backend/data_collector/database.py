@@ -1,5 +1,5 @@
 """
-Database Module - SQLite Setup
+Database Module - SQLite Setup & Operations
 
 File ini menangani semua operasi database menggunakan SQLAlchemy async.
 Database digunakan untuk menyimpan:
@@ -12,24 +12,40 @@ Database digunakan untuk menyimpan:
 Untuk pemula:
 - SQLAlchemy adalah ORM (Object-Relational Mapper) - kita bekerja dengan Python objects
 - Async/await memungkinkan database operations tanpa blocking
-- Migrations akan otomatis membuat tabel jika belum ada
+- Database akan otomatis dibuat saat pertama kali dijalankan
+
+Cara penggunaan:
+    from data_collector.database import (
+        init_db, save_ohlcv_data, get_ohlcv_data,
+        save_news_data, get_recent_news
+    )
+    
+    # Initialize database
+    await init_db()
+    
+    # Save data
+    await save_ohlcv_data("BTC/USDT", "1h", [candle_data])
+    
+    # Get data
+    data = await get_ohlcv_data("BTC/USDT", "1h", limit=100)
 """
 
-from datetime import datetime
-from typing import Optional, List, AsyncGenerator
+import os
+from datetime import datetime, timedelta
+from typing import List, Optional
 from contextlib import asynccontextmanager
 
 from sqlalchemy import (
     Column, Integer, Float, String, DateTime, Boolean, Text,
-    Index, create_engine, select, delete, func
+    Index, select
 )
 from sqlalchemy.ext.asyncio import (
     AsyncSession, create_async_engine, async_sessionmaker
 )
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase
 from loguru import logger
 
-from config import settings
+from data_collector.config import settings
 
 
 # ============================================
@@ -135,9 +151,6 @@ class TradingSignal(Base):
     executed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationship ke trades
-    trades = relationship("PaperTrade", back_populates="signal")
-    
     __table_args__ = (
         Index('idx_signal_symbol_time', 'symbol', 'timestamp'),
     )
@@ -146,74 +159,17 @@ class TradingSignal(Base):
         return f"<Signal {self.symbol} {self.signal} {self.confidence:.2%}>"
 
 
-class PaperTrade(Base):
-    """
-    Tabel untuk menyimpan riwayat transaksi paper trading.
-    
-    Ini adalah simulasi trading dengan uang virtual.
-    Setiap trade memiliki:
-    - side: "BUY" atau "SELL"
-    - type: "MARKET" atau "LIMIT"
-    - status: "FILLED", "PARTIAL", "CANCELLED"
-    - pnl: Profit/Loss dalam USDT
-    """
-    __tablename__ = "paper_trades"
-    
-    id = Column(String(50), primary_key=True)
-    signal_id = Column(String(50), nullable=True)  # Foreign key ke trading_signals
-    symbol = Column(String(20), nullable=False, index=True)
-    side = Column(String(10), nullable=False)  # BUY, SELL
-    type = Column(String(10), nullable=False)  # MARKET, LIMIT
-    price = Column(Float, nullable=False)
-    quantity = Column(Float, nullable=False)
-    total = Column(Float, nullable=False)
-    fee = Column(Float, nullable=False)
-    timestamp = Column(DateTime, nullable=False)
-    status = Column(String(20), nullable=False)  # FILLED, PARTIAL, CANCELLED
-    pnl = Column(Float, nullable=True)  # Profit/Loss
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationship ke signal
-    signal = relationship("TradingSignal", back_populates="trades")
-    
-    __table_args__ = (
-        Index('idx_trade_symbol_time', 'symbol', 'timestamp'),
-    )
-    
-    def __repr__(self) -> str:
-        return f"<Trade {self.symbol} {self.side} {self.quantity} @ {self.price}>"
-
-
-class PortfolioSnapshot(Base):
-    """
-    Tabel untuk menyimpan snapshot portfolio secara berkala.
-    
-    Digunakan untuk:
-    - Menghitung equity curve
-    - Analisis performa
-    - Drawdown tracking
-    """
-    __tablename__ = "portfolio_snapshots"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, index=True)
-    total_balance = Column(Float, nullable=False)
-    available_balance = Column(Float, nullable=False)
-    total_pnl = Column(Float, nullable=False)
-    total_pnl_percent = Column(Float, nullable=False)
-    open_positions = Column(Integer, nullable=False)
-    
-    def __repr__(self) -> str:
-        return f"<Portfolio {self.timestamp} ${self.total_balance:.2f}>"
-
-
 # ============================================
 # DATABASE ENGINE & SESSION
 # ============================================
 
+# Pastikan folder database ada
+os.makedirs(os.path.dirname(settings.DATABASE_PATH), exist_ok=True)
+
 # Create async engine
+DATABASE_URL = f"sqlite+aiosqlite:///{settings.DATABASE_PATH}"
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    DATABASE_URL,
     echo=settings.DEBUG,  # Log SQL queries jika DEBUG=True
     future=True,
 )
@@ -265,7 +221,7 @@ async def close_db() -> None:
 # ============================================
 
 @asynccontextmanager
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_session():
     """
     Context manager untuk mendapatkan database session.
     
@@ -473,7 +429,3 @@ async def get_recent_news(
     except Exception as e:
         logger.error(f"Failed to get recent news: {e}")
         raise
-
-
-# Import timedelta untuk get_recent_news
-from datetime import timedelta

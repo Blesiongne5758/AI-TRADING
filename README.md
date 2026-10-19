@@ -6,34 +6,35 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 
 - [Fitur Utama](#fitur-utama)
 - [Arsitektur Sistem](#arsitektur-sistem)
+- [Struktur Folder](#struktur-folder)
 - [Persiapan](#persiapan)
 - [Instalasi](#instalasi)
 - [Konfigurasi](#konfigurasi)
 - [Menjalankan Aplikasi](#menjalankan-aplikasi)
 - [Penjelasan Modul](#penjelasan-modul)
-- [API Documentation](#api-documentation)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
 ## ✨ Fitur Utama
 
-### ✅ MVP (Minimum Viable Product)
+### ✅ Phase 1: Data Collection (COMPLETE)
 
 - [x] **Koneksi Real-time ke Binance** - Data harga live dari 5 simbol (BTC, ETH, SOL, BNB, XRP)
-- [x] **5 Indikator Teknikal** - RSI, MACD, EMA, Bollinger Bands, Volume Analysis
+- [x] **6 Timeframes** - 1m, 5m, 15m, 1h, 4h, 1d
 - [x] **Analisis Sentimen** - FinBERT AI untuk analisis berita dari 3 sumber
-- [x] **Paper Trading** - Simulasi trading dengan virtual balance $10,000
-- [x] **Dashboard Interaktif** - Chart, portfolio overview, dan analytics
-- [x] **Decision Log** - Semua keputusan bot dengan penjelasan lengkap
-- [x] **Risk Management** - Stop-loss otomatis dan position sizing
-- [x] **Notifikasi Telegram** - Alert untuk setiap trade
+- [x] **Database SQLite** - Penyimpanan data OHLCV dan berita
+- [x] **Auto-reconnect** - Koneksi otomatis jika terputus
+- [x] **Logging** - Comprehensive logging untuk debugging
 
-### 🎁 Bonus Features
+### ⏳ Phase 2: Analysis & Trading (TODO)
 
-- [ ] Backtesting Engine - Uji strategi dengan data historis
-- [ ] Multi-timeframe Analysis - Analisis dari berbagai timeframe
-- [ ] Alert System - Notifikasi kondisi market ekstrem
+- [ ] **5 Indikator Teknikal** - RSI, MACD, EMA, Bollinger Bands, Volume
+- [ ] **Signal Generation** - BUY/SELL/HOLD dengan confidence score
+- [ ] **Paper Trading** - Simulasi trading dengan virtual balance $10,000
+- [ ] **Risk Management** - Stop-loss otomatis dan position sizing
+- [ ] **XAI Module** - Explainable AI untuk menjelaskan keputusan bot
+- [ ] **Notifikasi Telegram** - Alert untuk setiap trade
 
 ---
 
@@ -41,39 +42,51 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         FRONTEND                             │
-│              React + Tailwind CSS + TradingView              │
-└────────────────────────┬────────────────────────────────────┘
-                         │ REST API
-┌────────────────────────▼────────────────────────────────────┐
-│                      FASTAPI SERVER                          │
-│                    (api/main.py)                             │
-└──┬──────────┬──────────┬──────────┬──────────┬─────────────┘
-   │          │          │          │          │
-   ▼          ▼          ▼          ▼          ▼
-┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────────┐
-│Data  │  │Anal- │  │Paper │  │ XAI  │  │ Telegram │
-│Col-  │  │ysis  │  │Trad- │  │Module│  │   Bot    │
-│lector│  │Engine│  │ing   │  │      │  │          │
-└──┬───┘  └──┬───┘  └──┬───┘  └──┬───┘  └──────────┘
-   │         │         │         │
-   ▼         ▼         ▼         ▼
-┌──────────────────────────────────────────────────────────┐
-│                    SQLite Database                        │
-│              (trading_data.db)                            │
-└──────────────────────────────────────────────────────────┘
+│                    DATA COLLECTOR MODULE                     │
+│                                                              │
+│  ┌──────────────┐         ┌──────────────┐                 │
+│  │   Binance    │         │     News     │                 │
+│  │  WebSocket   │         │   Scraper    │                 │
+│  │              │         │  + FinBERT   │                 │
+│  └──────┬───────┘         └──────┬───────┘                 │
+│         │                        │                          │
+│         └────────┬───────────────┘                          │
+│                  │                                          │
+│         ┌────────▼────────┐                                 │
+│         │    Database     │                                 │
+│         │    (SQLite)     │                                 │
+│         └─────────────────┘                                 │
+│                                                              │
+│  main_collector.py ← Entry Point                            │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Penjelasan Arsitektur
+---
 
-1. **Frontend (React)** - User interface untuk monitoring dan kontrol
-2. **FastAPI Server** - Backend API yang menghubungkan semua modul
-3. **Data Collector** - Mengambil data dari Binance dan news sources
-4. **Analysis Engine** - Menghitung indikator teknikal dan sentimen
-5. **Paper Trading** - Simulasi trading dengan uang virtual
-6. **XAI Module** - Explainable AI untuk menjelaskan keputusan bot
-7. **Telegram Bot** - Notifikasi real-time ke user
-8. **Database** - Penyimpanan semua data (OHLCV, news, trades, signals)
+## 📁 Struktur Folder
+
+```
+ai-trading-agent/
+├── backend/
+│   ├── data_collector/              # Modul utama
+│   │   ├── __init__.py              # Package marker
+│   │   ├── config.py                # Konfigurasi global
+│   │   ├── database.py              # Database setup & operations
+│   │   ├── binance_ws.py            # Binance WebSocket
+│   │   ├── news_scraper.py          # News scraper + sentiment
+│   │   └── main_collector.py        # Entry point
+│   └── requirements.txt             # Python dependencies
+├── database/                        # SQLite database (auto-created)
+│   └── trading_data.db
+├── logs/                            # Log files (auto-created)
+│   ├── main_collector.log
+│   ├── binance_ws.log
+│   └── news_scraper.log
+├── .env                             # Environment variables (create from .env.example)
+├── .env.example                     # Template konfigurasi
+├── README.md                        # Dokumentasi ini
+└── .gitignore                       # Git ignore rules
+```
 
 ---
 
@@ -83,14 +96,14 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 
 - **Python 3.11+** - [Download Python](https://www.python.org/downloads/)
 - **Git** - [Download Git](https://git-scm.com/downloads)
-- **TA-Lib** (opsional) - Library untuk indikator teknikal
 
 ### Instalasi TA-Lib (Opsional)
+
+TA-Lib diperlukan untuk Phase 2 (indikator teknikal). Untuk Phase 1, tidak diperlukan.
 
 **Windows:**
 ```bash
 # Download dari: https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
-# Install wheel file:
 pip install TA_Lib‑0.4.28‑cp311‑cp311‑win_amd64.whl
 ```
 
@@ -111,8 +124,6 @@ make
 sudo make install
 pip install ta-lib
 ```
-
-**Catatan:** Jika TA-Lib tidak bisa diinstall, sistem akan otomatis menggunakan `pandas-ta` sebagai alternatif.
 
 ---
 
@@ -147,8 +158,9 @@ pip install -r requirements.txt
 ### 4. Setup Database
 
 ```bash
-# Buat folder database
+# Buat folder database dan logs
 mkdir database
+mkdir logs
 
 # Database akan otomatis dibuat saat aplikasi pertama kali dijalankan
 ```
@@ -201,12 +213,6 @@ TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_CHAT_ID=123456789
 ```
 
-**Cara membuat Telegram bot:**
-1. Buka Telegram, cari @BotFather
-2. Kirim `/newbot` dan ikuti instruksi
-3. Copy token yang diberikan
-4. Cari @userinfobot untuk mendapatkan chat ID Anda
-
 #### Trading Settings
 
 ```env
@@ -230,73 +236,121 @@ MIN_CONFIDENCE_THRESHOLD=0.60  # 60%
 
 ## ▶️ Menjalankan Aplikasi
 
-### 1. Jalankan Backend
+### 1. Jalankan Data Collector
 
 ```bash
 cd backend
-python api/main.py
-```
-
-Atau dengan uvicorn:
-
-```bash
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+python -m data_collector.main_collector
 ```
 
 **Output yang diharapkan:**
 ```
-2024-01-15 10:00:00 | INFO     | Starting AI Trading Agent v1.0.0
-2024-01-15 10:00:01 | INFO     | Initializing database...
-2024-01-15 10:00:01 | INFO     | Database initialized successfully
-2024-01-15 10:00:02 | INFO     | Initializing Binance data collector...
-2024-01-15 10:00:03 | INFO     | Exchange initialized successfully
-2024-01-15 10:00:04 | INFO     | Starting background tasks...
-2024-01-15 10:00:05 | INFO     | Application started successfully
-2024-01-15 10:00:05 | INFO     | Uvicorn running on http://0.0.0.0:8000
+2024-01-15 10:00:00 | INFO     | AI Trading Agent - Data Collector
+2024-01-15 10:00:01 | INFO     | Configuration validated successfully
+2024-01-15 10:00:02 | INFO     | Initializing collectors...
+2024-01-15 10:00:03 | INFO     | Database initialized successfully
+2024-01-15 10:00:04 | INFO     | Exchange initialized successfully
+2024-01-15 10:00:05 | INFO     | Sentiment model loaded successfully
+2024-01-15 10:00:06 | INFO     | Fetching initial historical data...
+2024-01-15 10:00:07 | INFO     | Fetched 500 candles for BTC/USDT 1m
+2024-01-15 10:00:08 | INFO     | All collectors running. Press Ctrl+C to stop.
 ```
 
-### 2. Akses API Documentation
-
-Buka browser dan kunjungi:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-### 3. Test API Endpoints
+### 2. Check Logs
 
 ```bash
-# Health check
-curl http://localhost:8000/health
+# Lihat log real-time
+tail -f logs/main_collector.log
 
-# Get system status
-curl http://localhost:8000/status
-
-# Get OHLCV data
-curl http://localhost:8000/ohlcv/BTC/USDT/1h?limit=100
-
-# Get recent news
-curl http://localhost:8000/news?limit=10
-
-# Get current price
-curl http://localhost:8000/price/BTC/USDT
+# Atau lihat log individual
+tail -f logs/binance_ws.log
+tail -f logs/news_scraper.log
 ```
 
-### 4. Jalankan Frontend (Opsional)
+### 3. Check Database
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# Install SQLite browser (opsional)
+# Windows: Download dari https://sqlitebrowser.org/
+# macOS: brew install --cask sqlitebrowser
+# Linux: sudo apt install sqlitebrowser
+
+# Buka database
+sqlitebrowser database/trading_data.db
 ```
 
-Buka http://localhost:5173 di browser.
+### 4. Stop Aplikasi
+
+Tekan `Ctrl + C` untuk stop aplikasi dengan graceful shutdown.
 
 ---
 
 ## 📖 Penjelasan Modul
 
-### 1. Data Collector (`backend/data_collector/`)
+### 1. `config.py` - Konfigurasi Global
 
-#### `binance_ws.py` - Binance WebSocket
+**Fungsi:** Menyimpan semua konfigurasi aplikasi
+
+**Isi:**
+- Application settings (name, version, debug mode)
+- Binance API settings (keys, symbols, timeframes)
+- Database settings (SQLite path)
+- Telegram bot settings
+- Trading settings (risk management)
+- Analysis settings (indicators parameters)
+
+**Cara penggunaan:**
+```python
+from data_collector.config import settings
+
+print(settings.BINANCE_API_KEY)
+print(settings.TRADING_SYMBOLS)
+```
+
+**Untuk pemula:**
+- Menggunakan `pydantic-settings` untuk validasi
+- Semua values bisa di-override via `.env` file
+- Type hints untuk autocomplete di IDE
+
+---
+
+### 2. `database.py` - Database Operations
+
+**Fungsi:** Mengelola database SQLite
+
+**Isi:**
+- Database models (tables):
+  - `OHLCVData` - Candlestick data
+  - `NewsData` - News with sentiment
+  - `TradingSignal` - Bot signals
+- Database initialization
+- CRUD operations (save, get, update, delete)
+- Async session management
+
+**Cara penggunaan:**
+```python
+from data_collector.database import (
+    init_db, save_ohlcv_data, get_ohlcv_data
+)
+
+# Initialize database
+await init_db()
+
+# Save data
+await save_ohlcv_data("BTC/USDT", "1h", [candle_data])
+
+# Get data
+data = await get_ohlcv_data("BTC/USDT", "1h", limit=100)
+```
+
+**Untuk pemula:**
+- ORM = Object-Relational Mapping
+- Kita kerja dengan Python objects, bukan SQL queries
+- Async/await untuk non-blocking operations
+
+---
+
+### 3. `binance_ws.py` - Binance WebSocket
 
 **Fungsi:** Mengambil data harga real-time dari Binance
 
@@ -325,7 +379,9 @@ Buka http://localhost:5173 di browser.
 - Ini adalah data dasar untuk analisis teknikal
 - Setiap candle mewakili 1 periode waktu (1 menit, 1 jam, 1 hari, dll)
 
-#### `news_scraper.py` - News Scraper & Sentiment Analysis
+---
+
+### 4. `news_scraper.py` - News Scraper & Sentiment
 
 **Fungsi:** Mengambil berita crypto dan menganalisis sentimen
 
@@ -365,200 +421,28 @@ Buka http://localhost:5173 di browser.
 
 ---
 
-### 2. Analysis Engine (`backend/analysis/`)
+### 5. `main_collector.py` - Entry Point
 
-*Modul ini akan diimplementasi di Fase 2*
+**Fungsi:** Menjalankan semua collectors secara bersamaan
 
-**Fungsi:**
-- Menghitung indikator teknikal (RSI, MACD, EMA, dll)
-- Menggabungkan analisis teknikal + sentimen
-- Menghasilkan trading signals
+**Cara kerja:**
+1. Initialize database
+2. Initialize Binance collector
+3. Initialize news scraper
+4. Fetch initial historical data
+5. Start real-time data collection
+6. Start news scraping (setiap 15 menit)
 
-**Indikator Teknikal:**
-
-#### RSI (Relative Strength Index)
-- Mengukur momentum harga
-- Range: 0-100
-- > 70 = Overbought (potensi turun)
-- < 30 = Oversold (potensi naik)
-
-#### MACD (Moving Average Convergence Divergence)
-- Mengukur trend dan momentum
-- Terdiri dari MACD line, signal line, histogram
-- Crossover = sinyal beli/jual
-
-#### EMA (Exponential Moving Average)
-- Rata-rata harga dengan bobot lebih ke data terbaru
-- EMA 20, 50, 200 untuk short/mid/long term
-- Golden cross = EMA pendek memotong ke atas EMA panjang
-
----
-
-### 3. Paper Trading (`backend/paper_trading/`)
-
-*Modul ini akan diimplementasi di Fase 2*
-
-**Fungsi:**
-- Simulasi trading dengan uang virtual
-- Mengelola portfolio
-- Menghitung P&L (Profit & Loss)
-- Risk management (stop-loss, position sizing)
-
-**Konsep:**
-- Initial balance: $10,000 USDT
-- Max risk per trade: 2% ($200)
-- Stop-loss: Otomatis cut loss jika rugi 2%
-- Take-profit: Otomatis ambil profit jika untung 5%
-
----
-
-### 4. XAI Module (`backend/xai/`)
-
-*Modul ini akan diimplementasi di Fase 2*
-
-**Fungsi:**
-- Menjelaskan keputusan bot dalam bahasa manusia
-- Chat interface untuk tanya jawab
-- Educational content untuk pemula
-
-**Contoh output:**
-```
-Bot merekomendasikan BUY BTC/USDT karena:
-1. RSI menunjukkan oversold (28) - potensi rebound
-2. Golden cross pada EMA 20/50 - trend bullish
-3. Sentimen berita positif (+0.65) - adopsi institusi
-4. Volume meningkat 45% - konfirmasi momentum
-
-Confidence: 78%
-Risk: 2% ($200)
-Stop-loss: $65,900
-Take-profit: $71,000
-```
-
----
-
-## 📡 API Documentation
-
-### Base URL
-```
-http://localhost:8000
-```
-
-### Endpoints
-
-#### Health Check
-```http
-GET /health
-```
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-15T10:00:00"
-}
-```
-
-#### System Status
-```http
-GET /status
-```
-
-**Response:**
-```json
-{
-  "status": "running",
-  "version": "1.0.0",
-  "timestamp": "2024-01-15T10:00:00",
-  "services": {
-    "binance_collector": {
-      "running": true,
-      "symbols": ["BTC/USDT", "ETH/USDT"],
-      "messages_received": 1234
-    },
-    "news_scraper": {
-      "running": true,
-      "news_fetched": 567,
-      "news_saved": 560
-    }
-  }
-}
-```
-
-#### Get OHLCV Data
-```http
-GET /ohlcv/{symbol}/{timeframe}?limit=500
-```
-
-**Parameters:**
-- `symbol`: Trading pair (e.g., "BTC/USDT")
-- `timeframe`: Time interval (e.g., "1h", "1d")
-- `limit`: Number of candles (default 500, max 1000)
-
-**Response:**
-```json
-[
-  {
-    "timestamp": 1642684522,
-    "open": 42000.50,
-    "high": 42500.00,
-    "low": 41800.00,
-    "close": 42300.75,
-    "volume": 1234.56
-  }
-]
-```
-
-#### Get News
-```http
-GET /news?limit=50&hours=24
-```
-
-**Parameters:**
-- `limit`: Number of news items (default 50)
-- `hours`: Time range in hours (default 24)
-
-**Response:**
-```json
-[
-  {
-    "id": 1,
-    "title": "Bitcoin reaches new all-time high",
-    "source": "CoinDesk",
-    "url": "https://coindesk.com/...",
-    "published_at": "2024-01-15T10:00:00",
-    "summary": "Bitcoin price surged...",
-    "sentiment_score": 0.85,
-    "sentiment_label": "bullish"
-  }
-]
-```
-
-#### Get Current Price
-```http
-GET /price/{symbol}
-```
-
-**Response:**
-```json
-{
-  "symbol": "BTC/USDT",
-  "price": 42300.75,
-  "timestamp": "2024-01-15T10:00:00"
-}
-```
+**Untuk pemula:**
+- Ini adalah file yang pertama kali dijalankan
+- Menggunakan asyncio untuk menjalankan multiple tasks sekaligus
+- Graceful shutdown saat menerima Ctrl+C
 
 ---
 
 ## 🔧 Troubleshooting
 
-### Error: "TA-Lib not found"
-
-**Solusi:**
-- Install TA-Lib C library (lihat bagian Persiapan)
-- Atau gunakan pandas-ta sebagai alternatif (sudah termasuk di requirements.txt)
-
-### Error: "Binance API key invalid"
+### Error: "BINANCE_API_KEY required"
 
 **Solusi:**
 - Pastikan API key dan secret sudah benar di file `.env`
@@ -569,10 +453,10 @@ GET /price/{symbol}
 
 **Solusi:**
 - SQLite tidak mendukung concurrent writes yang tinggi
+- Tutup semua koneksi ke database sebelum menjalankan ulang
 - Untuk production, gunakan PostgreSQL
-- Atau tutup semua koneksi ke database sebelum menjalankan ulang
 
-### Error: "Port 8000 already in use"
+### Error: "Port already in use"
 
 **Solusi:**
 ```bash
@@ -595,32 +479,104 @@ lsof -ti:8000 | xargs kill -9
 
 **Solusi:**
 - Tunggu beberapa menit untuk data terkumpul
-- Check log: `logs/api.log`
+- Check log: `logs/main_collector.log`
 - Pastikan koneksi internet stabil
 - Verify Binance API keys valid
+
+### ModuleNotFoundError
+
+**Solusi:**
+```bash
+# Pastikan virtual environment aktif
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+
+# Reinstall dependencies
+pip install -r requirements.txt
+```
+
+---
+
+## 📊 Data yang Dikumpulkan
+
+### OHLCV Data
+- **5 symbols**: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT
+- **6 timeframes**: 1m, 5m, 15m, 1h, 4h, 1d
+- **500 candles per symbol/timeframe** (historical)
+- **Real-time updates** via WebSocket
+
+### News Data
+- **3 sources**: CoinDesk, CoinTelegraph, CryptoNews
+- **Fetch interval**: Setiap 15 menit
+- **Sentiment analysis**: FinBERT AI
+- **Deduplication**: Mencegah berita duplikat
+
+---
+
+## 🎓 Learning Points untuk Pemula
+
+### Konsep yang Dipelajari:
+1. **Async/Await** - Non-blocking operations
+2. **WebSocket** - Real-time data streaming
+3. **ORM** - Database abstraction
+4. **Sentiment Analysis** - NLP dengan AI
+5. **Error Handling** - Robust code
+6. **Logging** - Debugging & monitoring
+7. **Configuration Management** - Environment variables
+
+### Best Practices yang Diterapkan:
+1. Type hints untuk type safety
+2. Docstrings untuk documentation
+3. Modular code structure
+4. Separation of concerns
+5. Error handling
+6. Logging
+7. Configuration management
 
 ---
 
 ## 📚 Resources
 
 ### Dokumentasi
-
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [CCXT Documentation](https://docs.ccxt.com/)
 - [SQLAlchemy Documentation](https://docs.sqlalchemy.org/)
 - [Hugging Face Transformers](https://huggingface.co/docs/transformers)
 
-### Trading
+### Tutorial
+- [Python Asyncio Tutorial](https://realpython.com/async-io-python/)
+- [WebSocket Tutorial](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
 
+### Trading
 - [Binance API Documentation](https://binance-docs.github.io/apidocs/)
 - [Technical Analysis Library](https://github.com/bukosabino/ta)
 - [FinBERT Model](https://huggingface.co/ProsusAI/finbert)
 
-### Tutorial
+---
 
-- [Python Asyncio Tutorial](https://realpython.com/async-io-python/)
-- [WebSocket Tutorial](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
-- [REST API Design](https://restfulapi.net/)
+## 🎯 Next Steps (Phase 2)
+
+### Yang Akan Diimplementasi:
+
+1. **Analysis Engine**
+   - Technical indicators (RSI, MACD, EMA, Bollinger Bands)
+   - Sentiment aggregation
+   - Signal generation
+
+2. **Paper Trading Engine**
+   - Portfolio management
+   - Order execution simulation
+   - Risk management
+
+3. **XAI Module**
+   - Explanation generation
+   - Chat interface
+
+4. **Telegram Notifications**
+   - Trade alerts
+   - Daily reports
 
 ---
 

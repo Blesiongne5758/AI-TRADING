@@ -27,8 +27,8 @@ from datetime import datetime
 import json
 from loguru import logger
 
-from config import settings
-from database import save_ohlcv_data
+from data_collector.config import settings
+from data_collector.database import save_ohlcv_data
 
 
 class BinanceDataCollector:

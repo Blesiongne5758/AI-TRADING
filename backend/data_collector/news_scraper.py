@@ -26,8 +26,8 @@ from datetime import datetime, timedelta
 from loguru import logger
 import re
 
-from config import settings
-from database import save_news_data
+from data_collector.config import settings
+from data_collector.database import save_news_data
 
 
 class SentimentAnalyzer:
