@@ -47,13 +47,44 @@ Membangun konteks dari database untuk penjelasan yang lebih kaya:
 - Portfolio statistics
 - Trade history
 
-### 4. **Chat Agent**
-Chat interface dengan pattern matching untuk menjawab pertanyaan:
-- Tanya tentang istilah trading
-- Cek status portfolio
-- Analisis market per symbol
-- Penjelasan keputusan bot
-- Dan banyak lagi!
+### 4. **Chat Agent** (Intent-Based System)
+Chat interface canggih dengan **intent detection** menggunakan regex pattern matching:
+
+**Intent yang Didukung:**
+- `greeting` - Salam dan perkenalan
+- `explain_indicator` - Penjelasan indikator teknikal (RSI, MACD, EMA, dll)
+- `explain_concept` - Penjelasan konsep trading (long, short, stop-loss, dll)
+- `why_trade` - Penjelasan keputusan bot ("kenapa bot beli BTC?")
+- `portfolio_status` - Status portfolio dan P&L
+- `market_condition` - Kondisi market dan harga terbaru
+- `recent_trades` - Riwayat trade terakhir
+- `help` - Panduan penggunaan
+- `thanks` - Ucapan terima kasih
+
+**Fitur Canggih:**
+- Natural language understanding dengan regex patterns
+- Fuzzy matching untuk variasi pertanyaan
+- Context-aware responses dari database
+- Fallback ke dictionary search untuk pertanyaan tidak dikenal
+- Integrasi penuh dengan TradingDictionary dan ContextBuilder
+
+**Contoh Pertanyaan:**
+```
+👤 "halo"
+🤖 → Greeting response
+
+👤 "apa itu RSI?"
+🤖 → Full explanation dari dictionary
+
+👤 "kenapa bot beli BTC?"
+🤖 → Signal context + explanation
+
+👤 "status portfolio saya"
+🤖 → Portfolio context dari database
+
+👤 "bagaimana kondisi market?"
+🤖 → Market context dengan harga & berita
+```
 
 ## 🚀 Cara Menggunakan
 
@@ -195,18 +226,71 @@ print(response)
    🏷️  Kategori: technical
 ```
 
-### Chat Agent
+### Chat Agent (Intent-Based System)
 ```
-👤 User: apa itu stop loss?
+👤 User: halo
 🤖 Bot:
-📖 Stop Loss (SL)
-   Order otomatis untuk menutup posisi saat harga mencapai level tertentu, membatasi kerugian.
+👋 **Halo! Saya AI Trading Assistant**
 
-   WAJIB digunakan untuk risk management. Bot menggunakan max 2% risiko per trade.
+Saya di sini untuk membantu Anda memahami trading dan keputusan yang diambil oleh bot.
 
-   💡 Contoh: Entry $67,000, SL $65,660 → Max loss 2% jika SL ter-trigger
+💡 **Yang bisa saya bantu:**
+• Jelaskan istilah trading (RSI, MACD, dll)
+• Jelaskan kenapa bot melakukan trade tertentu
+• Cek status portfolio Anda
+• Analisis kondisi market
+• Dan banyak lagi!
 
-   🏷️  Kategori: risk
+👤 User: apa itu RSI?
+🤖 Bot:
+📖 **RSI (Relative Strength Index)**
+
+Indikator momentum yang mengukur kecepatan dan perubahan pergerakan harga. Nilainya 0-100.
+
+**Interpretasi:**
+• > 70: Overbought (potensi turun)
+• < 30: Oversold (potensi naik)
+• 30-70: Netral
+
+💡 **Contoh:** RSI BTC = 28 → Market oversold, potensi rebound
+
+👤 User: kenapa bot beli BTC?
+🤖 Bot:
+🤔 **Mengapa bot melakukan BUY pada BTC/USDT?**
+
+📊 **Analisis BTC/USDT:**
+💰 Harga: $67,234.50
+🟢 RSI: OVERSOLD (score: +80)
+🟢 MACD: BULLISH_CROSSOVER (score: +90)
+🟢 EMA: STRONG_UPTREND (score: +85)
+
+💡 **Kesimpulan**:
+Bot menganalisis kombinasi indikator teknikal dan sentimen berita. Jika mayoritas indikator sejalan, bot akan memberikan sinyal BUY.
+
+👤 User: status portfolio saya
+🤖 Bot:
+💼 **Status Portfolio Anda:**
+
+📈 **Posisi Terbuka (1):**
+💰 BTC/USDT (LONG)
+   Entry: $67,234.50 → Current: $68,500.00
+   PnL: +$1,885.00 | SL: $65,834.50 | TP: $70,034.50
+
+📊 **Statistik Trading:**
+• Total trades: 15
+• Win rate: 73.3%
+• Profit factor: 2.45
+• Total PnL: +$1,234.56
+
+👤 User: trade terakhir
+🤖 Bot:
+📜 **Riwayat Trade:**
+💰 BTC/USDT (long)
+   Entry: $67,234.50 → Exit: $70,034.50
+   PnL: +$417.50 (+4.16%) - TAKE_PROFIT
+💸 ETH/USDT (short)
+   Entry: $3,450.00 → Exit: $3,520.00
+   PnL: -$70.00 (-2.03%) - STOP_LOSS
 ```
 
 ## 🎓 Fitur Edukasi
@@ -261,16 +345,30 @@ print(response)
 
 ## 🔧 Configuration
 
-### Custom Patterns di Chat Agent
-Edit `chat_agent.py` untuk menambah pattern matching:
+### Custom Intents di Chat Agent
+Edit `chat_agent.py` untuk menambah intent baru:
 
 ```python
-self.patterns = {
-    "custom": {
-        "patterns": ["keyword1", "keyword2"],
-        "response": "Your custom response"
+def _build_intents(self) -> Dict:
+    return {
+        # Intent yang sudah ada...
+        "greeting": {...},
+        "explain_indicator": {...},
+        
+        # Tambah intent baru
+        "custom_intent": {
+            "patterns": [
+                r"pattern1\s+(\w+)",
+                r"pattern2\s+(\w+)",
+            ],
+            "response": self._handle_custom_intent,
+        },
     }
-}
+
+async def _handle_custom_intent(self, match, message: str) -> str:
+    """Handle custom intent"""
+    param = match.group(1)
+    return f"Custom response untuk {param}"
 ```
 
 ### Custom Terms di Dictionary
@@ -279,10 +377,12 @@ Edit `trading_dictionary.py` untuk menambah istilah:
 ```python
 self.terms = {
     "custom_term": {
-        "term": "Custom Term",
-        "definition": "Your definition",
-        "example": "Your example",
-        "category": "custom"
+        "name": "Custom Term",
+        "category": "custom",
+        "simple": "Penjelasan sederhana",
+        "detailed": "Penjelasan detail",
+        "analogy": "Analogi untuk pemula",
+        "example": "Contoh penggunaan"
     }
 }
 ```

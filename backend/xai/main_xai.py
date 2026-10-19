@@ -141,9 +141,9 @@ async def demo_context_builder():
 
 
 async def demo_chat_agent():
-    """Demo chat agent"""
+    """Demo chat agent dengan intent-based system"""
     logger.info("\n" + "="*70)
-    logger.info("💬 DEMO: Chat Agent")
+    logger.info("💬 DEMO: Chat Agent (Intent-Based)")
     logger.info("="*70)
     
     db = DatabaseManager()
@@ -151,14 +151,40 @@ async def demo_chat_agent():
     
     chat_agent = ChatAgent(db)
     
-    # Test messages
+    # Test messages untuk berbagai intent
     test_messages = [
+        # Greeting
         "halo",
+        
+        # Explain indicator
         "apa itu RSI?",
-        "portfolio",
-        "kenapa bot buy?",
-        "analisis BTC",
-        "help"
+        "jelaskan MACD",
+        
+        # Explain concept
+        "apa itu stop-loss?",
+        "jelaskan confidence",
+        
+        # Why trade
+        "kenapa bot beli BTC?",
+        "mengapa bot jual ETH?",
+        
+        # Portfolio status
+        "status portfolio saya",
+        "berapa profit saya?",
+        
+        # Market condition
+        "bagaimana kondisi BTC?",
+        "market hari ini gimana?",
+        
+        # Recent trades
+        "trade terakhir",
+        "riwayat transaksi",
+        
+        # Help
+        "help",
+        
+        # Thanks
+        "terima kasih"
     ]
     
     for message in test_messages:
