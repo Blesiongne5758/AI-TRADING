@@ -338,14 +338,14 @@ pytest tests/ -v
 
 ### Logs
 ```bash
-# API logs
-tail -f logs/api.log
+# Main collector logs (semua aktivitas)
+tail -f logs/collector.log
 
-# Binance collector logs
-tail -f logs/binance_ws.log
-
-# News scraper logs
-tail -f logs/news_scraper.log
+# Log berisi:
+# - Database operations
+# - Binance data collection
+# - News scraping
+# - Errors dan warnings
 ```
 
 ### Database

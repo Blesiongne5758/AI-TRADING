@@ -42,12 +42,12 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    DATA COLLECTOR MODULE                     │
+│              DataCollectorService (Entry Point)              │
 │                                                              │
 │  ┌──────────────┐         ┌──────────────┐                 │
 │  │   Binance    │         │     News     │                 │
 │  │  Collector   │         │   Scraper    │                 │
-│  │  (REST API)  │         │  + FinBERT   │                 │
+│  │  (REST API)  │         │   (RSS)      │                 │
 │  └──────┬───────┘         └──────┬───────┘                 │
 │         │                        │                          │
 │         └────────┬───────────────┘                          │
@@ -258,27 +258,31 @@ python -m data_collector.main_collector
 
 **Output yang diharapkan:**
 ```
-2024-01-15 10:00:00 | INFO     | AI Trading Agent - Data Collector
-2024-01-15 10:00:01 | INFO     | Configuration validated successfully
-2024-01-15 10:00:02 | INFO     | Initializing collectors...
-2024-01-15 10:00:03 | INFO     | ✅ Database initialized at database/trading_data.db
-2024-01-15 10:00:04 | INFO     | 🧪 Menggunakan Binance TESTNET (aman untuk testing)
-2024-01-15 10:00:05 | INFO     | ✅ Connected to Binance. Markets loaded: 2000
-2024-01-15 10:00:06 | INFO     | 📊 Fetching historical candles...
-2024-01-15 10:00:07 | INFO     | ✅ BTC/USDT [1h]: 500 candles loaded
-2024-01-15 10:00:08 | INFO     | 🔄 Starting real-time ticker loop...
-2024-01-15 10:00:09 | INFO     | 💹 BTC/USDT: $42,300.75 (+2.50%)
+10:00:00 | INFO     | 🚀 Starting AI Trading Agent - Data Collector Service
+10:00:00 | INFO     | ============================================================
+10:00:01 | INFO     | ✅ Database initialized at database/trading_data.db
+10:00:02 | INFO     | 🧪 Menggunakan Binance TESTNET (aman untuk testing)
+10:00:03 | INFO     | ✅ Connected to Binance. Markets loaded: 2000
+10:00:04 | INFO     | 📊 Fetching historical candles...
+10:00:05 | INFO     | ✅ BTC/USDT [1h]: 500 candles loaded
+10:00:06 | INFO     | 🔄 Starting real-time ticker loop...
+10:00:07 | INFO     | 💹 BTC/USDT: $42,300.75 (+2.50%)
+10:00:08 | INFO     | 🔄 Starting news scraper (interval: 900s)
+10:00:09 | INFO     | 📰 Fetching news from all sources...
+10:00:10 | INFO     | 📰 CoinDesk: 20 articles
 ```
 
 ### 2. Check Logs
 
 ```bash
 # Lihat log real-time
-tail -f logs/main_collector.log
+tail -f logs/collector.log
 
-# Atau lihat log individual
-tail -f logs/binance_ws.log
-tail -f logs/news_scraper.log
+# Log berisi semua aktivitas:
+# - Database operations
+# - Binance data collection
+# - News scraping
+# - Errors dan warnings
 ```
 
 ### 3. Check Database
@@ -440,17 +444,18 @@ data = await get_ohlcv_data("BTC/USDT", "1h", limit=100)
 **Fungsi:** Menjalankan semua collectors secara bersamaan
 
 **Cara kerja:**
-1. Initialize database
-2. Initialize Binance collector
-3. Initialize news scraper
-4. Fetch initial historical data
-5. Start real-time data collection
-6. Start news scraping (setiap 15 menit)
+1. Setup logging
+2. Initialize database
+3. Start Binance collector (historical + real-time)
+4. Start News scraper (periodic)
+5. Run semua collectors secara paralel
+6. Graceful shutdown saat Ctrl+C
 
 **Untuk pemula:**
 - Ini adalah file yang pertama kali dijalankan
 - Menggunakan asyncio untuk menjalankan multiple tasks sekaligus
 - Graceful shutdown saat menerima Ctrl+C
+- Semua collectors berjalan concurrent menggunakan `asyncio.gather`
 
 ---
 
@@ -493,7 +498,7 @@ lsof -ti:8000 | xargs kill -9
 
 **Solusi:**
 - Tunggu beberapa menit untuk data terkumpul
-- Check log: `logs/main_collector.log`
+- Check log: `logs/collector.log`
 - Pastikan koneksi internet stabil
 - Verify Binance API keys valid
 

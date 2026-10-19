@@ -128,7 +128,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 # LOGGING
 # ============================================
 LOG_LEVEL = "INFO"
-LOG_FILE = LOG_DIR / "collector.log"
+LOG_FILE = LOG_DIR / "collector.log"  # Single log file untuk semua collector
 
 # ============================================
 # HELPER FUNCTIONS
