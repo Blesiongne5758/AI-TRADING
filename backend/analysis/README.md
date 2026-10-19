@@ -49,15 +49,62 @@ analysis/
 └── main_analysis.py               # Entry point untuk testing
 ```
 
-## 🚀 Cara Menjalankan
+## 🚀 Instalasi & Cara Menjalankan
 
-### 1. Pastikan Data Collector sudah berjalan
+### 1. Install Dependencies
+
+**Opsi A: Menggunakan Script Otomatis (Recommended)**
+
+```bash
+cd backend
+
+# Linux/Mac
+chmod +x setup.sh
+./setup.sh
+
+# Windows
+setup.bat
+```
+
+**Opsi B: Manual Installation**
+
+```bash
+cd backend
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Download TextBlob corpora (PENTING!)
+python -m textblob.download_corpora
+```
+
+📚 **Panduan instalasi lengkap:** Lihat [INSTALL.md](../../INSTALL.md)
+
+### 3. Verify Installation
+
+Setelah instalasi, verifikasi semua dependencies terinstall dengan benar:
+
+```bash
+cd backend
+python test_dependencies.py
+```
+
+Script ini akan test:
+- ✅ Python version (3.11+)
+- ✅ pandas-ta functionality
+- ✅ TextBlob functionality
+- ✅ Database connection
+- ✅ Binance connection
+
+Jika semua test passed, Anda siap menggunakan Analysis Engine!
+
+### 4. Jalankan Data Collector
 ```bash
 # Terminal 1: Data Collector
 python -m data_collector.main_collector
 ```
 
-### 2. Jalankan Analysis Engine
+### 5. Jalankan Analysis Engine
 ```bash
 # Terminal 2: Analysis Engine
 python -m analysis.main_analysis

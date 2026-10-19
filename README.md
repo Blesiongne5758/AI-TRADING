@@ -63,9 +63,30 @@ source venv/bin/activate  # Linux/Mac
 ```
 
 ### 3. Install dependencies
+
+**Opsi A: Menggunakan Script Otomatis (Recommended)**
+
 ```bash
 cd backend
+
+# Linux/Mac
+chmod +x setup.sh
+./setup.sh
+
+# Windows
+setup.bat
+```
+
+**Opsi B: Manual Installation**
+
+```bash
+cd backend
+
+# Install semua dependencies
 pip install -r requirements.txt
+
+# Download TextBlob corpora (PENTING!)
+python -m textblob.download_corpora
 ```
 
 ### 4. Setup environment
@@ -76,6 +97,8 @@ cp .env.example .env
 # Edit .env dengan API keys Anda
 # Dapatkan dari: https://testnet.binance.vision/
 ```
+
+📚 **Panduan instalasi lengkap:** Lihat [INSTALL.md](INSTALL.md)
 
 ### 5. Jalankan Data Collector (Fase 1)
 ```bash
@@ -228,6 +251,46 @@ Menggabungkan technical + sentiment menjadi trading signal:
 
 #### 9. `main_analysis.py` - Entry Point
 Entry point untuk testing analysis engine.
+
+## 🧪 Verify Installation
+
+Setelah instalasi, verifikasi semua dependencies terinstall dengan benar:
+
+```bash
+cd backend
+python test_dependencies.py
+```
+
+Script ini akan test:
+- ✅ Python version (3.11+)
+- ✅ Basic imports (ccxt, pandas, numpy, dll)
+- ✅ pandas-ta functionality
+- ✅ TextBlob functionality
+- ✅ Database connection
+- ✅ Binance connection
+
+Jika semua test passed, Anda siap menggunakan aplikasi!
+
+## 🔧 Troubleshooting
+
+### Error: "ModuleNotFoundError: No module named 'pandas_ta'"
+```bash
+pip install pandas-ta==0.3.14b
+```
+
+### Error: "ModuleNotFoundError: No module named 'textblob'"
+```bash
+pip install textblob==0.17.1
+python -m textblob.download_corpora
+```
+
+### Error: "TextBlob corpora not found"
+```bash
+python -m textblob.download_corpora
+```
+
+### Other Issues
+Lihat [INSTALL.md](INSTALL.md) untuk panduan troubleshooting lengkap.
 
 ## 🎯 Next Steps (Phase 3)
 
