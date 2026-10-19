@@ -2,7 +2,7 @@
 Main Collector - Entry Point untuk Data Collection
 
 File ini adalah entry point utama yang menjalankan semua data collection:
-1. Binance WebSocket (real-time market data)
+1. Binance Collector (historical candles + real-time tickers)
 2. News Scraper (RSS feeds + sentiment analysis)
 
 Untuk pemula:
@@ -32,7 +32,7 @@ from data_collector.config import (
     validate_config,
 )
 from data_collector.database import DatabaseManager
-from data_collector.binance_ws import BinanceDataCollector
+from data_collector.binance_ws import BinanceCollector
 from data_collector.news_scraper import NewsScraper
 
 
@@ -45,7 +45,7 @@ class CollectorManager:
     Manager untuk semua data collectors.
     
     Mengkoordinasi:
-    - Binance WebSocket collector
+    - Binance Collector (historical + real-time)
     - News scraper
     - Graceful shutdown
     """
@@ -53,7 +53,7 @@ class CollectorManager:
     def __init__(self):
         """Initialize collector manager."""
         self.db = DatabaseManager()
-        self.binance_collector: BinanceDataCollector = None
+        self.binance_collector: BinanceCollector = None
         self.news_scraper: NewsScraper = None
         self.running = False
         self.tasks: List[asyncio.Task] = []
@@ -75,7 +75,7 @@ class CollectorManager:
             
             # Initialize Binance collector
             logger.info("Initializing Binance data collector...")
-            self.binance_collector = BinanceDataCollector(db=self.db)
+            self.binance_collector = BinanceCollector(db=self.db)
             await self.binance_collector.initialize()
             
             # Initialize news scraper
@@ -132,7 +132,7 @@ class CollectorManager:
         
         Ini akan:
         1. Fetch initial historical data
-        2. Start Binance WebSocket (real-time)
+        2. Start Binance Collector (real-time tickers)
         3. Start news scraper (periodic)
         """
         self.running = True
@@ -143,12 +143,12 @@ class CollectorManager:
             await self.fetch_initial_data()
             
             # Create tasks for each collector
-            # Task 1: Binance WebSocket
+            # Task 1: Binance Collector
             task1 = asyncio.create_task(
                 self.binance_collector.start()
             )
             self.tasks.append(task1)
-            logger.info("Started Binance WebSocket collector")
+            logger.info("Started Binance collector")
             
             # Task 2: News scraper
             task2 = asyncio.create_task(

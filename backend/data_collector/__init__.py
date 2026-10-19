@@ -2,13 +2,13 @@
 Data Collector Module - AI Trading Agent
 
 Modul ini bertanggung jawab untuk mengumpulkan data dari berbagai sumber:
-- Binance WebSocket (OHLCV data real-time)
+- Binance REST API (OHLCV data historis + ticker real-time)
 - News RSS feeds (crypto news + sentiment analysis)
 
 Struktur Module:
 - config.py: Konfigurasi global (API keys, settings)
 - database.py: DatabaseManager untuk SQLite operations
-- binance_ws.py: Binance WebSocket connection
+- binance_ws.py: Binance REST API collector
 - news_scraper.py: News scraping + FinBERT sentiment
 - main_collector.py: Entry point (menjalankan semua collector)
 
@@ -17,11 +17,11 @@ Cara penggunaan:
     python -m data_collector.main_collector
     
     # Atau import individual components
-    from data_collector import BinanceDataCollector, NewsScraper, DatabaseManager
+    from data_collector import BinanceCollector, NewsScraper, DatabaseManager
     from data_collector.config import TRADING_SYMBOLS, DATABASE_PATH
 """
 
-from data_collector.binance_ws import BinanceDataCollector
+from data_collector.binance_ws import BinanceCollector
 from data_collector.news_scraper import NewsScraper, SentimentAnalyzer
 from data_collector.config import (
     TRADING_SYMBOLS,
@@ -37,7 +37,7 @@ from data_collector.database import DatabaseManager
 
 __version__ = "1.0.0"
 __all__ = [
-    'BinanceDataCollector',
+    'BinanceCollector',
     'NewsScraper',
     'SentimentAnalyzer',
     'DatabaseManager',

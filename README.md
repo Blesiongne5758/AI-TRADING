@@ -20,10 +20,10 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 
 ### ✅ Phase 1: Data Collection (COMPLETE)
 
-- [x] **Koneksi Real-time ke Binance** - Data harga live dari 5 simbol (BTC, ETH, SOL, BNB, XRP)
+- [x] **Koneksi ke Binance REST API** - Data harga historis + real-time dari 5 simbol (BTC, ETH, SOL, BNB, XRP)
 - [x] **6 Timeframes** - 1m, 5m, 15m, 1h, 4h, 1d
 - [x] **Analisis Sentimen** - FinBERT AI untuk analisis berita dari 3 sumber
-- [x] **Database SQLite** - Penyimpanan data OHLCV dan berita
+- [x] **Database SQLite** - Penyimpanan data OHLCV, ticker, dan berita
 - [x] **Auto-reconnect** - Koneksi otomatis jika terputus
 - [x] **Logging** - Comprehensive logging untuk debugging
 
@@ -46,8 +46,8 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 │                                                              │
 │  ┌──────────────┐         ┌──────────────┐                 │
 │  │   Binance    │         │     News     │                 │
-│  │  WebSocket   │         │   Scraper    │                 │
-│  │              │         │  + FinBERT   │                 │
+│  │  Collector   │         │   Scraper    │                 │
+│  │  (REST API)  │         │  + FinBERT   │                 │
 │  └──────┬───────┘         └──────┬───────┘                 │
 │         │                        │                          │
 │         └────────┬───────────────┘                          │
@@ -71,8 +71,8 @@ ai-trading-agent/
 │   ├── data_collector/              # Modul utama
 │   │   ├── __init__.py              # Package marker
 │   │   ├── config.py                # Konfigurasi global
-│   │   ├── database.py              # Database setup & operations
-│   │   ├── binance_ws.py            # Binance WebSocket
+│   │   ├── database.py              # DatabaseManager (SQLite)
+│   │   ├── binance_ws.py            # Binance REST API collector
 │   │   ├── news_scraper.py          # News scraper + sentiment
 │   │   └── main_collector.py        # Entry point
 │   └── requirements.txt             # Python dependencies
@@ -261,12 +261,13 @@ python -m data_collector.main_collector
 2024-01-15 10:00:00 | INFO     | AI Trading Agent - Data Collector
 2024-01-15 10:00:01 | INFO     | Configuration validated successfully
 2024-01-15 10:00:02 | INFO     | Initializing collectors...
-2024-01-15 10:00:03 | INFO     | Database initialized successfully
-2024-01-15 10:00:04 | INFO     | Exchange initialized successfully
-2024-01-15 10:00:05 | INFO     | Sentiment model loaded successfully
-2024-01-15 10:00:06 | INFO     | Fetching initial historical data...
-2024-01-15 10:00:07 | INFO     | Fetched 500 candles for BTC/USDT 1m
-2024-01-15 10:00:08 | INFO     | All collectors running. Press Ctrl+C to stop.
+2024-01-15 10:00:03 | INFO     | ✅ Database initialized at database/trading_data.db
+2024-01-15 10:00:04 | INFO     | 🧪 Menggunakan Binance TESTNET (aman untuk testing)
+2024-01-15 10:00:05 | INFO     | ✅ Connected to Binance. Markets loaded: 2000
+2024-01-15 10:00:06 | INFO     | 📊 Fetching historical candles...
+2024-01-15 10:00:07 | INFO     | ✅ BTC/USDT [1h]: 500 candles loaded
+2024-01-15 10:00:08 | INFO     | 🔄 Starting real-time ticker loop...
+2024-01-15 10:00:09 | INFO     | 💹 BTC/USDT: $42,300.75 (+2.50%)
 ```
 
 ### 2. Check Logs
@@ -363,21 +364,20 @@ data = await get_ohlcv_data("BTC/USDT", "1h", limit=100)
 
 ---
 
-### 3. `binance_ws.py` - Binance WebSocket
+### 3. `binance_ws.py` - Binance REST API Collector
 
-**Fungsi:** Mengambil data harga real-time dari Binance
+**Fungsi:** Mengambil data harga dari Binance (historical + real-time)
 
 **Cara kerja:**
-1. Connect ke Binance WebSocket
-2. Subscribe ke candlestick streams
-3. Terima data setiap ada candle baru
+1. Connect ke Binance REST API
+2. Fetch historical candlestick data (sekali saat startup)
+3. Loop fetch real-time ticker data (setiap 10 detik)
 4. Simpan ke database
 
 **Contoh data yang dikumpulkan:**
 ```python
+# Candlestick data
 {
-    "symbol": "BTC/USDT",
-    "timeframe": "1h",
     "timestamp": 1642684522,
     "open": 42000.50,
     "high": 42500.00,
@@ -385,12 +385,23 @@ data = await get_ohlcv_data("BTC/USDT", "1h", limit=100)
     "close": 42300.75,
     "volume": 1234.56
 }
+
+# Ticker data
+{
+    "symbol": "BTC/USDT",
+    "price": 42300.75,
+    "bid": 42300.50,
+    "ask": 42301.00,
+    "volume_24h": 1234.56,
+    "price_change_24h": 2.5
+}
 ```
 
 **Untuk pemula:**
 - OHLCV = Open, High, Low, Close, Volume
 - Ini adalah data dasar untuk analisis teknikal
 - Setiap candle mewakili 1 periode waktu (1 menit, 1 jam, 1 hari, dll)
+- Ticker = data harga terbaru (real-time)
 
 ---
 
@@ -514,16 +525,22 @@ pip install -r requirements.txt
 
 ## 📊 Data yang Dikumpulkan
 
-### OHLCV Data
+### Candlestick Data (OHLCV)
 - **5 symbols**: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT
 - **6 timeframes**: 1m, 5m, 15m, 1h, 4h, 1d
 - **500 candles per symbol/timeframe** (historical)
-- **Real-time updates** via WebSocket
+- **Saved to database** untuk analisis teknikal
+
+### Ticker Data (Real-time)
+- **5 symbols**: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT
+- **Update interval**: Setiap 10 detik
+- **Data**: Harga terbaru, bid/ask, volume 24h, perubahan harga
+- **Saved to database** untuk monitoring real-time
 
 ### News Data
-- **3 sources**: CoinDesk, CoinTelegraph, CryptoNews
+- **3 sources**: CoinDesk, CoinTelegraph, Decrypt
 - **Fetch interval**: Setiap 15 menit
-- **Sentiment analysis**: FinBERT AI
+- **Sentiment analysis**: FinBERT AI (Fase 2)
 - **Deduplication**: Mencegah berita duplikat
 
 ---
