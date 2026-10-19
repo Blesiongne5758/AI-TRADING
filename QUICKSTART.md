@@ -11,6 +11,15 @@ cd backend
 pip install -r requirements.txt
 ```
 
+**Dependencies yang diinstall:**
+- ccxt, websockets, aiohttp (Binance connection)
+- pandas, numpy (data processing)
+- feedparser (RSS news)
+- aiosqlite, sqlalchemy (database)
+- python-dotenv, loguru, pydantic (utilities)
+
+**Troubleshooting?** Lihat `INSTALL.md` untuk panduan lengkap.
+
 ### 2. Setup Environment (1 menit)
 
 ```bash

@@ -155,6 +155,21 @@ cd backend
 pip install -r requirements.txt
 ```
 
+**Dependencies yang diinstall:**
+- `ccxt` - Library untuk koneksi ke Binance
+- `websockets` - WebSocket client
+- `aiohttp` - Async HTTP client
+- `pandas` - Data processing
+- `numpy` - Numerical computing
+- `feedparser` - RSS feed parser
+- `aiosqlite` - Async SQLite
+- `sqlalchemy` - Database ORM
+- `python-dotenv` - Environment variables
+- `loguru` - Logging
+- `pydantic` - Data validation
+
+**Note:** Library untuk sentiment analysis (`transformers`, `torch`) akan diinstall di Phase 2.
+
 ### 4. Setup Database
 
 ```bash
