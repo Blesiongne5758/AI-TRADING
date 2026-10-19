@@ -46,3 +46,14 @@ aiosqlite==0.19.0
 # ============================================
 python-dotenv==1.0.0
 loguru==0.7.2
+
+# ============================================
+# XAI & Chat Agent (MVP - ringan)
+# ============================================
+# Tidak perlu dependency berat untuk pattern matching
+# XAI module menggunakan rule-based explanations dan dictionary lookup
+
+# Optional: Untuk upgrade ke LLM (uncomment jika mau pakai OpenAI/Llama)
+# openai==1.12.0
+# langchain==0.1.5
+# langchain-community==0.0.20

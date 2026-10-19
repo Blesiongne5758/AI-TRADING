@@ -186,6 +186,67 @@ python -m analysis.main_analysis
    Position Size: 10.0% of portfolio
 ```
 
+### 7. Jalankan Paper Trading Engine (Fase 3)
+```bash
+# Terminal baru untuk paper trading
+python -m paper_trading.main_paper_trading
+```
+
+**Output yang diharapkan:**
+```
+15:30:01 | INFO     | 🚀 Initializing Paper Trading Service...
+15:30:01 | INFO     | 💰 Initial balance: $10,000.00
+15:30:01 | INFO     | 📊 Max open positions: 5
+15:30:01 | INFO     | ⚠️  Max risk per trade: 2.0%
+15:30:02 | INFO     | 🎯 BTC/USDT: LONG executed @ $67,234.50 | Qty: 0.00148700 | Value: $100.00 | Fee: $0.10
+15:30:02 | INFO     |    SL: $65,834.50 | TP: $70,034.50
+```
+
+### 8. Jalankan XAI Demo (Fase 4)
+```bash
+# Terminal baru untuk XAI demo
+python -m xai.main_xai
+```
+
+**Output yang diharapkan:**
+```
+======================================================================
+🤖 XAI MODULE - DEMO & TESTING
+======================================================================
+
+📝 DEMO: Explanation Generator
+🤖 PENJELASAN KEPUTUSAN BOT
+🟢 Bot MEREKOMENDASIKAN BELI BTC/USDT
+   Confidence: 85.5% | Score: +78.45
+
+📚 DEMO: Trading Dictionary
+📖 RSI (Relative Strength Index)
+   Indikator momentum yang mengukur kecepatan dan perubahan pergerakan harga...
+
+💬 DEMO: Chat Agent
+👤 User: apa itu RSI?
+🤖 Bot: 📖 RSI (Relative Strength Index)...
+```
+
+**Interactive Chat:**
+```bash
+# Ketik 'y' saat ditanya untuk mulai interactive chat
+Mulai interactive chat? (y/n): y
+
+👤 You: apa itu stop loss?
+🤖 Bot: 📖 Stop Loss (SL)
+   Order otomatis untuk menutup posisi saat harga mencapai level tertentu...
+
+👤 You: portfolio
+🤖 Bot: 💼 PORTFOLIO STATUS:
+   📊 Total Trades: 10
+   🎯 Win Rate: 70.0%
+   💰 Total P&L: $+1,234.56
+
+👤 You: quit
+🤖 Bot: 👋 Sampai jumpa!
+```
+
 ## 📊 Data yang Dikumpulkan
 
 ### Candlestick Data (OHLCV)
@@ -228,7 +289,27 @@ textblob==0.17.1      # Sentiment analysis (simple & lightweight)
 # torch==2.1.2          # PyTorch
 ```
 
-**Total: 11 packages (~200MB)**
+### Fase 3: Paper Trading Engine
+```txt
+# Tidak ada dependency tambahan
+# Menggunakan modules dari Fase 1 & 2
+```
+
+### Fase 4: XAI (Explainable AI)
+```txt
+# Tidak ada dependency tambahan (MVP - ringan)
+# Menggunakan pattern matching untuk chat agent
+# Rule-based explanations (tidak perlu LLM)
+```
+
+**Optional (untuk upgrade ke LLM-based chat):**
+```txt
+# openai==1.12.0              # OpenAI API
+# langchain==0.1.5            # LangChain framework
+# langchain-community==0.0.20 # LangChain community models
+```
+
+**Total: 11 packages (~200MB)** - Sangat ringan untuk sistem trading lengkap!
 
 ## 🔧 Konfigurasi
 
@@ -284,6 +365,81 @@ Menggabungkan technical + sentiment menjadi trading signal:
 
 #### 9. `main_analysis.py` - Entry Point
 Entry point untuk testing analysis engine.
+
+### Paper Trading Engine (Fase 3)
+
+#### 10. `portfolio_manager.py` - Portfolio Management
+Mengelola portfolio virtual untuk paper trading:
+- **In-memory state management** - Track saldo, posisi, P&L secara real-time
+- **Margin management** - Reserve/release margin untuk posisi
+- **P&L calculation** - Hitung unrealized & realized P&L
+- **Drawdown tracking** - Track peak balance dan max drawdown
+
+#### 11. `risk_manager.py` - Risk Management
+Validasi risiko sebelum eksekusi trade (8-step validation):
+- **Confidence check** - Min 55% confidence untuk trade
+- **Max positions check** - Max 5 posisi terbuka
+- **Duplicate symbol check** - Cegah double entry
+- **Daily loss limit** - Stop trading jika loss > 5% per hari
+- **Position size limit** - Max 20% portfolio per posisi
+- **Risk per trade** - Max 2% risk per trade
+- **Balance check** - Pastikan saldo cukup
+- **Auto-adjust** - Otomatis adjust position size jika risk terlalu besar
+
+#### 12. `order_executor.py` - Order Execution
+Eksekusi order berdasarkan trading signals:
+- **Signal validation** - Validasi signal dengan risk manager
+- **Position creation** - Buat posisi di database
+- **Fee calculation** - Hitung trading fee (0.1% seperti Binance)
+- **SL/TP monitoring** - Check stop-loss & take-profit setiap 10 detik
+- **P&L tracking** - Hitung P&L setelah fee
+
+#### 13. `main_paper_trading.py` - Orchestrator
+Auto-trade loop dengan time-based scheduling:
+- **Analysis cycle** - Setiap 5 menit
+- **SL/TP check** - Setiap 10 detik
+- **Portfolio snapshot** - Setiap 1 jam
+- **Status print** - Setelah setiap analysis cycle
+
+### XAI Module (Fase 4)
+
+#### 14. `explanation_generator.py` - Explanation Generator
+Mengubah signal teknis menjadi narasi penjelasan bahasa manusia:
+- **Layered explanation** - Summary → Detail → Risk → Education
+- **Visual indicators** - Emoji untuk quick scanning (🟢 bullish, 🔴 bearish)
+- **Educational notes** - Catatan edukasi untuk pemula
+- **Simple explanation** - Penjelasan 1 paragraf
+
+#### 15. `trading_dictionary.py` - Trading Dictionary
+Kamus 50+ istilah trading dengan penjelasan lengkap:
+- **Technical Analysis** - RSI, MACD, EMA, Bollinger Bands, ATR, Volume
+- **Trading Terms** - Long, Short, Entry, Exit, Stop Loss, Take Profit
+- **Risk Management** - Position Sizing, Daily Loss Limit, Drawdown
+- **Market Conditions** - Overbought, Oversold, Breakout, Consolidation
+- **Performance Metrics** - Win Rate, Profit Factor, Sharpe Ratio
+
+#### 16. `context_builder.py` - Context Builder
+Membangun konteks dari database untuk penjelasan yang lebih kaya:
+- **Symbol context** - Current price, 24h range, recent news
+- **Trade context** - Position details, unrealized P&L, distance to SL/TP
+- **Performance context** - Stats, snapshots, trade history
+
+#### 17. `chat_agent.py` - Chat Agent
+Chat interface dengan pattern matching untuk tanya jawab:
+- **Pattern matching** - Pahami pertanyaan user
+- **Dictionary queries** - "apa itu RSI?", "jelaskan MACD"
+- **Portfolio queries** - "portfolio", "status", "performance"
+- **Signal queries** - "kenapa bot buy?", "signal terakhir"
+- **Analysis queries** - "analisis BTC", "bagaimana ETH?"
+- **Interactive chat** - Real-time conversation
+
+#### 18. `main_xai.py` - XAI Demo
+Entry point untuk testing dan demo XAI module:
+- **Demo explanation generator**
+- **Demo trading dictionary**
+- **Demo context builder**
+- **Demo chat agent**
+- **Interactive chat session**
 
 ## 🧪 Verify Installation
 
