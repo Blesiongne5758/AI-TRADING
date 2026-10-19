@@ -1,15 +1,15 @@
 """
-XAI (Explainable AI) Module
-Menjelaskan keputusan trading bot dalam bahasa manusia untuk edukasi pemula
+Explainable AI (XAI) Module
+Chat agent dan explanation generator untuk edukasi trader pemula
 """
+from .chat_agent import ChatAgent
 from .explanation_generator import ExplanationGenerator
 from .trading_dictionary import TradingDictionary
 from .context_builder import ContextBuilder
-from .chat_agent import ChatAgent
 
 __all__ = [
+    "ChatAgent",
     "ExplanationGenerator",
     "TradingDictionary",
     "ContextBuilder",
-    "ChatAgent",
 ]
