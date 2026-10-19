@@ -1,14 +1,13 @@
 """
-Main Analysis - Entry point untuk testing Analysis Engine
-
-Cara menjalankan:
-    cd backend
-    python -m analysis.main_analysis
+Main Analysis - Entry point untuk testing Modul B
 """
-
 import asyncio
-from typing import List
+import sys
+from pathlib import Path
 from loguru import logger
+
+# Tambahkan parent directory ke path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data_collector.database import DatabaseManager
 from .technical_indicators import TechnicalAnalyzer
@@ -16,140 +15,154 @@ from .sentiment_analysis import SentimentAnalyzer
 from .signal_generator import SignalGenerator
 
 
-async def analyze_symbol(symbol: str, timeframe: str = "1h") -> None:
-    """
-    Analisis satu symbol
-    
-    Args:
-        symbol: Trading pair (e.g., "BTC/USDT")
-        timeframe: Timeframe (e.g., "1h")
-    """
+# Setup logging
+logger.remove()
+logger.add(
+    sys.stdout,
+    level="INFO",
+    format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | {message}",
+)
+
+
+async def analyze_symbol(symbol: str, timeframe: str = "1h"):
+    """Analisis satu simbol dan tampilkan hasilnya"""
     logger.info(f"\n{'='*70}")
-    logger.info(f"🔍 Analyzing {symbol} [{timeframe}]")
+    logger.info(f"🔍 Menganalisis {symbol} [{timeframe}]")
     logger.info(f"{'='*70}")
-    
-    # 1. Load data dari database
+
     db = DatabaseManager()
-    candles = await db.get_candles(symbol, timeframe, limit=500)
-    
-    if len(candles) < 200:
-        logger.warning(f"⚠️  Data tidak cukup ({len(candles)} candles), butuh minimal 200")
+    await db.initialize()
+
+    # 1. Ambil data candle dari database
+    candles = await db.get_candles(symbol, timeframe, limit=250)
+    if not candles:
+        logger.error(f"❌ Tidak ada data candle untuk {symbol} [{timeframe}]")
         return
-    
-    # 2. Load news untuk sentiment analysis
-    news = await db.get_latest_news(limit=20)
-    
-    logger.info(f"📊 Loaded {len(candles)} candles dan {len(news)} news articles")
-    
-    # 3. Technical Analysis
+
+    logger.info(f"📊 Loaded {len(candles)} candles")
+
+    # 2. Analisis teknikal
     tech_analyzer = TechnicalAnalyzer()
-    technical_result = tech_analyzer.calculate_all(candles)
-    
-    if technical_result is None:
-        logger.warning(f"❌ Technical analysis gagal untuk {symbol}")
+    tech_result = tech_analyzer.calculate_all(candles)
+    if not tech_result:
+        logger.error("❌ Analisis teknikal gagal")
         return
-    
-    # 4. Sentiment Analysis
-    sentiment_analyzer = SentimentAnalyzer(use_finbert=False)
-    sentiment_result = sentiment_analyzer.analyze_news_batch(news)
-    
-    # 5. Generate Signal
+
+    logger.info(f"\n💹 Harga terbaru: ${tech_result['latest_price']:,.2f}")
+    logger.info("\n📈 Interpretasi Indikator:")
+    for indicator, data in tech_result["interpretation"].items():
+        logger.info(
+            f"  • {indicator.upper():10} | {data['signal']:20} | "
+            f"Score: {data['score']:+4} | {data['reason']}"
+        )
+
+    # 3. Analisis sentimen
+    news_items = await db.get_latest_news(limit=15)
+    logger.info(f"\n📰 Loaded {len(news_items)} news articles")
+
+    sentiment_analyzer = SentimentAnalyzer(use_finbert=False)  # TextBlob untuk MVP
+    sentiment_result = sentiment_analyzer.analyze_news_batch(news_items)
+
+    logger.info(
+        f"\n🧠 Sentimen Overall: {sentiment_result['overall_label']} "
+        f"(score: {sentiment_result['overall_score']:+.3f})"
+    )
+    logger.info(
+        f"   Distribusi: {sentiment_result['positive_count']} positif, "
+        f"{sentiment_result['negative_count']} negatif, "
+        f"{sentiment_result['neutral_count']} netral"
+    )
+
+    # 4. Generate trading signal
     signal_gen = SignalGenerator()
     signal = signal_gen.generate_signal(
         symbol=symbol,
         timeframe=timeframe,
-        technical_analysis=technical_result,
+        technical_analysis=tech_result,
         sentiment_analysis=sentiment_result,
     )
-    
-    # 6. Print results
-    print(f"\n📈 SIGNAL: {signal['signal']}")
-    print(f"🎯 Confidence: {signal['confidence']:.1f}%")
-    print(f"💰 Current Price: ${signal['latest_price']:,.2f}")
-    print(f"📊 Final Score: {signal['final_score']:+.2f}")
-    
-    print(f"\n📋 Reasons:")
-    for i, reason in enumerate(signal['reasons'], 1):
-        print(f"   {i}. {reason}")
-    
-    print(f"\n🎯 Component Scores:")
-    for component, data in signal['component_scores'].items():
-        score = data['score']
-        sig = data['signal']
-        weight = data['weight']
-        print(f"   {component.upper():12} | Score: {score:+6.1f} | Signal: {sig:20} | Weight: {weight:.0%}")
-    
-    print(f"\n🛡️  Suggested Actions:")
-    actions = signal['suggested_actions']
-    print(f"   Action: {actions['action']}")
-    if actions['action'] != "HOLD":
-        print(f"   Entry: ${actions['entry']:,.2f}")
-        print(f"   Stop Loss: ${actions['stop_loss']:,.2f} ({actions['sl_distance_percent']:.2f}%)")
-        print(f"   Take Profit: ${actions['take_profit']:,.2f} ({actions['tp_distance_percent']:.2f}%)")
-        print(f"   Risk/Reward Ratio: {actions['risk_reward_ratio']:.1f}:1")
-        print(f"   Position Size: {actions['position_size_percent']:.1f}% of portfolio")
-        print(f"   Max Risk: {actions['max_risk_percent']:.1f}% of portfolio")
-    else:
-        print(f"   Reason: {actions['reason']}")
-    
-    print(f"\n📰 Sentiment Analysis:")
-    print(f"   Overall Score: {signal['sentiment_score']:+.3f}")
-    print(f"   Overall Label: {signal['sentiment_label']}")
-    print(f"   Total Articles: {sentiment_result['total_articles']}")
-    print(f"   Distribution: {sentiment_result['positive_count']} positive, {sentiment_result['negative_count']} negative, {sentiment_result['neutral_count']} neutral")
-    
-    print(f"\n⚠️  Risk Warning:")
-    print(f"   {signal['risk_warning']}")
-    
-    # Show top 3 news articles with sentiment
-    if sentiment_result.get('articles'):
-        print(f"\n📰 Top News Articles:")
-        for i, article in enumerate(sentiment_result['articles'][:3], 1):
-            sent_data = article.get('sentiment', {})
-            print(f"   {i}. [{article.get('source', 'Unknown')}] {article.get('title', 'No title')[:60]}...")
-            print(f"      Sentiment: {sent_data.get('label', 'N/A')} (score: {sent_data.get('score', 0):+.3f})")
-    
-    print(f"\n{'='*70}\n")
+
+    # 5. Tampilkan hasil final
+    logger.info(f"\n{'='*70}")
+    logger.info(f"🎯 TRADING SIGNAL: {signal['signal']}")
+    logger.info(f"{'='*70}")
+    logger.info(f"   Confidence: {signal['confidence']:.1f}%")
+    logger.info(f"   Final Score: {signal['final_score']:+.2f}")
+    logger.info(f"   Technical Score: {signal['technical_score']:+.2f}")
+    logger.info(f"   Sentiment: {signal['sentiment_label']} ({signal['sentiment_score']:+.3f})")
+
+    logger.info(f"\n📋 Alasan Utama:")
+    for i, reason in enumerate(signal["reasons"], 1):
+        logger.info(f"   {i}. {reason}")
+
+    logger.info(f"\n💡 Suggested Actions:")
+    actions = signal["suggested_actions"]
+    logger.info(f"   Action: {actions['action']}")
+    if actions["entry"]:
+        logger.info(f"   Entry: ${actions['entry']:,.2f}")
+        logger.info(f"   Stop Loss: ${actions['stop_loss']:,.2f} (-{actions['sl_distance_percent']:.2f}%)")
+        logger.info(f"   Take Profit: ${actions['take_profit']:,.2f} (+{actions['tp_distance_percent']:.2f}%)")
+        logger.info(f"   Risk/Reward: 1:{actions['risk_reward_ratio']}")
+        logger.info(f"   Position Size: {actions['position_size_percent']}% dari portfolio")
+        logger.info(f"   Max Risk: {actions['max_risk_percent']}% dari portfolio")
+
+    logger.info(f"\n⚠️  Risk Warning:")
+    logger.info(f"   {signal['risk_warning']}")
+
+    return signal
 
 
-async def analyze_all_symbols() -> None:
-    """Analisis semua symbols"""
-    symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
-    timeframe = "1h"
-    
-    logger.info(f"\n🚀 Starting Analysis Engine")
-    logger.info(f"📊 Symbols: {', '.join(symbols)}")
-    logger.info(f"⏰ Timeframe: {timeframe}")
-    
-    for symbol in symbols:
+async def analyze_all_symbols():
+    """Analisis semua simbol yang dipantau"""
+    from data_collector.config import TRADING_SYMBOLS
+
+    logger.info("🚀 Starting Analysis Engine - Analyzing all symbols")
+    all_signals = []
+
+    for symbol in TRADING_SYMBOLS:
         try:
-            await analyze_symbol(symbol, timeframe)
+            signal = await analyze_symbol(symbol, timeframe="1h")
+            if signal:
+                all_signals.append(signal)
         except Exception as e:
             logger.error(f"❌ Error analyzing {symbol}: {e}")
-    
-    logger.info(f"\n✅ Analysis completed!")
+
+    # Summary
+    logger.info(f"\n{'='*70}")
+    logger.info(f"📊 SUMMARY - {len(all_signals)} symbols analyzed")
+    logger.info(f"{'='*70}")
+
+    for signal in all_signals:
+        emoji = {
+            "STRONG_BUY": "🟢🟢",
+            "BUY": "🟢",
+            "NEUTRAL": "⚪",
+            "SELL": "🔴",
+            "STRONG_SELL": "🔴🔴",
+        }.get(signal["signal"], "⚪")
+
+        logger.info(
+            f"  {emoji} {signal['symbol']:12} | {signal['signal']:12} | "
+            f"Confidence: {signal['confidence']:5.1f}% | "
+            f"Score: {signal['final_score']:+6.2f}"
+        )
+
+    return all_signals
 
 
 async def main():
     """Main entry point"""
-    try:
-        # Analyze all symbols
-        await analyze_all_symbols()
-        
-    except KeyboardInterrupt:
-        logger.info("\n⚠️  Analysis interrupted by user")
-    except Exception as e:
-        logger.error(f"❌ Fatal error: {e}")
-        raise
+    # Analisis 1 simbol saja untuk testing cepat
+    await analyze_symbol("BTC/USDT", timeframe="1h")
+
+    # Atau analisis semua simbol (uncomment baris di bawah):
+    # await analyze_all_symbols()
 
 
 if __name__ == "__main__":
-    # Setup logging
-    logger.add(
-        "logs/analysis.log",
-        rotation="10 MB",
-        level="DEBUG"
-    )
-    
-    # Run main
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("\n⚠️  Analysis stopped by user")
+    except Exception as e:
+        logger.exception(f"💥 Fatal error: {e}")
