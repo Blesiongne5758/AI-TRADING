@@ -15,12 +15,12 @@ export default function ChartView({ symbol = 'BTC/USDT', timeframe = '1h' }) {
     // Create chart
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { color: '#1a1d29' },
+        background: { color: '#1e293b' },
         textColor: '#e2e8f0',
       },
       grid: {
-        vertLines: { color: '#2a2d3a' },
-        horzLines: { color: '#2a2d3a' },
+        vertLines: { color: '#334155' },
+        horzLines: { color: '#334155' },
       },
       width: chartContainerRef.current.clientWidth,
       height: 500,
@@ -112,7 +112,7 @@ export default function ChartView({ symbol = 'BTC/USDT', timeframe = '1h' }) {
   }
 
   return (
-    <div className="bg-dark-card rounded-lg border border-dark-border p-6">
+    <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-white">{symbol} Chart</h2>
         <div className="flex gap-2">
@@ -123,7 +123,7 @@ export default function ChartView({ symbol = 'BTC/USDT', timeframe = '1h' }) {
               className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                 selectedTimeframe === tf
                   ? 'bg-primary-600 text-white'
-                  : 'bg-dark-bg text-dark-muted hover:bg-dark-border'
+                  : 'bg-slate-900 text-slate-400 hover:bg-slate-700'
               }`}
             >
               {tf}

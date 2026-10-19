@@ -1,32 +1,32 @@
-import { useEffect, useState } from 'react'
-import { TrendingUp, TrendingDown, DollarSign, Target, Activity } from 'lucide-react'
-import axios from 'axios'
+import { useEffect, useState } from 'react';
+import { TrendingUp, TrendingDown, DollarSign, Target, Activity } from 'lucide-react';
+import axios from 'axios';
 
 export default function Dashboard() {
-  const [portfolio, setPortfolio] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [portfolio, setPortfolio] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchPortfolio()
-  }, [])
+    fetchPortfolio();
+  }, []);
 
   const fetchPortfolio = async () => {
     try {
-      const response = await axios.get('/api/portfolio/summary')
-      setPortfolio(response.data)
+      const response = await axios.get('/api/portfolio/summary');
+      setPortfolio(response.data);
     } catch (error) {
-      console.error('Error fetching portfolio:', error)
+      console.error('Error fetching portfolio:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   if (loading) {
-    return <div className="p-6 text-white">Loading...</div>
+    return <div className="p-6 text-white">Loading...</div>;
   }
 
   if (!portfolio) {
-    return <div className="p-6 text-white">Failed to load portfolio</div>
+    return <div className="p-6 text-white">Failed to load portfolio</div>;
   }
 
   return (
@@ -34,7 +34,7 @@ export default function Dashboard() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-        <p className="text-dark-muted mt-1">Portfolio overview & performance</p>
+        <p className="text-slate-400 mt-1">Portfolio overview & performance</p>
       </div>
 
       {/* Stats Cards */}
@@ -66,7 +66,7 @@ export default function Dashboard() {
       </div>
 
       {/* Performance Metrics */}
-      <div className="bg-dark-card rounded-lg border border-dark-border p-6">
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
         <h2 className="text-xl font-bold text-white mb-4">Performance Metrics</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Metric label="Total Trades" value={portfolio.stats.total_trades} />
@@ -78,7 +78,7 @@ export default function Dashboard() {
 
       {/* Open Positions */}
       {portfolio.positions && portfolio.positions.length > 0 && (
-        <div className="bg-dark-card rounded-lg border border-dark-border p-6">
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
           <h2 className="text-xl font-bold text-white mb-4">Open Positions</h2>
           <div className="space-y-3">
             {portfolio.positions.map((pos, idx) => (
@@ -88,7 +88,7 @@ export default function Dashboard() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function StatCard({ title, value, icon: Icon, color }) {
@@ -98,36 +98,36 @@ function StatCard({ title, value, icon: Icon, color }) {
     red: 'bg-red-500/10 text-red-500',
     purple: 'bg-purple-500/10 text-purple-500',
     orange: 'bg-orange-500/10 text-orange-500',
-  }
+  };
 
   return (
-    <div className="bg-dark-card rounded-lg border border-dark-border p-6">
+    <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-dark-muted">{title}</span>
+        <span className="text-sm text-slate-400">{title}</span>
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colors[color]}`}>
           <Icon className="w-5 h-5" />
         </div>
       </div>
       <p className="text-2xl font-bold text-white">{value}</p>
     </div>
-  )
+  );
 }
 
 function Metric({ label, value }) {
   return (
     <div className="text-center">
       <p className="text-2xl font-bold text-white">{value}</p>
-      <p className="text-sm text-dark-muted mt-1">{label}</p>
+      <p className="text-sm text-slate-400 mt-1">{label}</p>
     </div>
-  )
+  );
 }
 
 function PositionCard({ position }) {
-  const pnl = position.pnl || 0
-  const isProfit = pnl >= 0
+  const pnl = position.pnl || 0;
+  const isProfit = pnl >= 0;
 
   return (
-    <div className="bg-dark-bg rounded-lg border border-dark-border p-4">
+    <div className="bg-slate-900 rounded-lg border border-slate-700 p-4">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold text-white">{position.symbol}</span>
@@ -143,18 +143,18 @@ function PositionCard({ position }) {
       </div>
       <div className="grid grid-cols-3 gap-4 text-sm">
         <div>
-          <p className="text-dark-muted">Entry</p>
+          <p className="text-slate-400">Entry</p>
           <p className="text-white font-medium">${position.entry_price.toFixed(2)}</p>
         </div>
         <div>
-          <p className="text-dark-muted">Stop Loss</p>
+          <p className="text-slate-400">Stop Loss</p>
           <p className="text-red-500 font-medium">${position.stop_loss.toFixed(2)}</p>
         </div>
         <div>
-          <p className="text-dark-muted">Take Profit</p>
+          <p className="text-slate-400">Take Profit</p>
           <p className="text-green-500 font-medium">${position.take_profit.toFixed(2)}</p>
         </div>
       </div>
     </div>
-  )
+  );
 }
