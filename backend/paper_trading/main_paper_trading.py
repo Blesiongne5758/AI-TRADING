@@ -39,11 +39,13 @@ class PaperTradingEngine:
         Args:
             initial_balance: Saldo awal virtual
         """
-        # Initialize components
+        # Initialize database first
         self.db = DatabaseManager()
-        self.portfolio = PortfolioManager(initial_balance=initial_balance)
+        
+        # Initialize components with db
+        self.portfolio = PortfolioManager(initial_balance=initial_balance, db=self.db)
         self.risk_manager = RiskManager()
-        self.executor = OrderExecutor(self.portfolio, self.risk_manager)
+        self.executor = OrderExecutor(self.portfolio, self.risk_manager, self.db)
         
         # Analysis components
         self.tech_analyzer = TechnicalAnalyzer()
@@ -141,13 +143,21 @@ class PaperTradingEngine:
                 logger.error(f"❌ Error analyzing {symbol}: {e}")
         
         # 4. Save portfolio snapshot (untuk equity curve tracking)
-        await self.portfolio.save_snapshot()
+        snapshot_data = {
+            "timestamp": int(datetime.now().timestamp() * 1000),
+            "total_balance": self.portfolio.get_portfolio_summary()["total_balance"],
+            "available_balance": self.portfolio.available_balance,
+            "unrealized_pnl": self.portfolio.get_portfolio_summary()["unrealized_pnl"],
+            "realized_pnl": self.portfolio.total_realized_pnl,
+            "total_positions": len(self.portfolio.open_positions)
+        }
+        await self.db.save_portfolio_snapshot(snapshot_data)
         
         # 5. Print summary
         logger.info(f"\n{'='*70}")
         logger.info(f"📊 Cycle Summary: {trades_executed} trades executed")
         logger.info(f"{'='*70}")
-        await self.executor.print_execution_summary()
+        self.executor.print_execution_summary()
 
     async def run_continuous(self):
         """Jalankan continuous trading loop"""
@@ -182,7 +192,7 @@ class PaperTradingEngine:
         logger.info("\n" + "="*70)
         logger.info("📊 FINAL PORTFOLIO SUMMARY")
         logger.info("="*70)
-        await self.executor.print_execution_summary()
+        self.executor.print_execution_summary()
 
     async def run_once(self):
         """Jalankan satu cycle saja (untuk testing)"""
