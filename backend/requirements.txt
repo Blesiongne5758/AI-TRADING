@@ -1,0 +1,54 @@
+# AI Trading Agent - Backend Dependencies
+# Python 3.11+
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+websockets==12.0
+
+# Trading & Data
+ccxt==4.2.25
+pandas==2.2.0
+numpy==1.26.3
+
+# Technical Analysis
+ta-lib==0.4.28  # Requires TA-Lib C library installed
+pandas-ta==0.3.14b  # Alternative if TA-Lib not available
+
+# Sentiment Analysis
+transformers==4.37.2
+torch==2.1.2
+torchvision==0.16.2
+
+# Database
+aiosqlite==0.19.0
+sqlalchemy==2.0.25
+
+# HTTP & Async
+aiohttp==3.9.1
+httpx==0.26.0
+requests==2.31.0
+
+# RSS Feed
+feedparser==6.0.11
+
+# Telegram Bot
+python-telegram-bot==20.7
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Logging & Monitoring
+loguru==0.7.2
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+
+# Development
+black==24.1.1
+ruff==0.1.14
+mypy==1.8.0
