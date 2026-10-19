@@ -7,7 +7,6 @@ Cara menjalankan:
 """
 
 import asyncio
-import pandas as pd
 from typing import List
 from loguru import logger
 
@@ -35,18 +34,15 @@ async def analyze_symbol(symbol: str, timeframe: str = "1h") -> None:
         logger.warning(f"⚠️  Data tidak cukup ({len(candles)} candles), butuh minimal 200")
         return
     
-    # Convert to DataFrame
-    df = pd.DataFrame(candles)
-    
     # 2. Load news untuk sentiment analysis
     news = await db.get_latest_news(limit=20)
     news_texts = [n['title'] + " " + (n.get('summary') or '') for n in news]
     
-    logger.info(f"📊 Loaded {len(df)} candles dan {len(news_texts)} news articles")
+    logger.info(f"📊 Loaded {len(candles)} candles dan {len(news_texts)} news articles")
     
     # 3. Generate signal
     generator = SignalGenerator(use_ml_sentiment=False)
-    signal = generator.generate(df, news_texts, symbol, timeframe)
+    signal = generator.generate(candles, news_texts, symbol, timeframe)
     
     # 4. Print results
     print(f"\n📈 SIGNAL: {signal['action']}")
@@ -57,20 +53,30 @@ async def analyze_symbol(symbol: str, timeframe: str = "1h") -> None:
     for i, reason in enumerate(signal['reasons'], 1):
         print(f"   {i}. {reason}")
     
-    print(f"\n🛡️  Risk Management:")
+    print(f"\n🛡️  Risk Management (ATR-based):")
     rm = signal['risk_management']
-    print(f"   Stop Loss: ${rm['stop_loss']:,.2f}")
+    print(f"   ATR: {rm.get('atr', 0):.2f}")
+    print(f"   Stop Loss: ${rm['stop_loss']:,.2f} ({rm.get('stop_loss_distance_percent', 0):.2f}%)")
     print(f"   Take Profit: ${rm['take_profit']:,.2f}")
-    print(f"   Risk/Reward Ratio: {rm['risk_reward_ratio']:.2f}")
+    print(f"   Risk/Reward Ratio: {rm['risk_reward_ratio']:.2f}:1")
     print(f"   Position Size: {rm['position_size_percent']:.1f}% of portfolio")
     
     print(f"\n📊 Technical Indicators:")
     tech = signal['technical']
-    print(f"   RSI: {tech.get('rsi', 0):.2f} ({tech.get('rsi_signal', 'N/A')})")
-    print(f"   MACD: {tech.get('macd', 0):.2f} ({tech.get('macd_signal', 'N/A')})")
-    print(f"   EMA 20/50/200: {tech.get('ema_20', 0):.2f} / {tech.get('ema_50', 0):.2f} / {tech.get('ema_200', 0):.2f}")
-    print(f"   Bollinger Bands: {tech.get('bb_lower', 0):.2f} - {tech.get('bb_upper', 0):.2f}")
-    print(f"   Volume Ratio: {tech.get('volume_ratio', 0):.2f}x")
+    print(f"   RSI: {tech.get('rsi', {}).get('value', 0):.2f}")
+    print(f"   MACD: {tech.get('macd', {}).get('macd', 0):.2f} (Signal: {tech.get('macd', {}).get('signal', 0):.2f})")
+    print(f"   EMA 20/50/200: {tech.get('ema', {}).get('ema_20', 0):.2f} / {tech.get('ema', {}).get('ema_50', 0):.2f} / {tech.get('ema', {}).get('ema_200', 0):.2f}")
+    print(f"   Bollinger Bands: {tech.get('bollinger', {}).get('lower', 0):.2f} - {tech.get('bollinger', {}).get('upper', 0):.2f}")
+    print(f"   Volume Ratio: {tech.get('volume', {}).get('ratio', 0):.2f}x")
+    
+    print(f"\n🔍 Interpretation:")
+    interp = signal['interpretation']
+    for indicator, data in interp.items():
+        signal_name = data.get('signal', 'N/A')
+        score = data.get('score', 0)
+        reason = data.get('reason', '')
+        print(f"   {indicator.upper()}: {signal_name} (score: {score:+d})")
+        print(f"      → {reason}")
     
     print(f"\n📰 Sentiment Analysis:")
     sent = signal['sentiment']

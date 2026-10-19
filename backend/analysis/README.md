@@ -4,11 +4,12 @@ Analysis Engine adalah modul yang menganalisis data dari Data Collector dan meng
 
 ## 🎯 Fitur
 
-- ✅ **Technical Indicators** - RSI, MACD, EMA, Bollinger Bands, Volume (menggunakan **pandas-ta**)
+- ✅ **Technical Indicators** - RSI, MACD, EMA, Bollinger Bands, Volume, ATR (menggunakan **pandas-ta**)
+- ✅ **Interpretation System** - Scoring system (-100 to +100) dengan reason untuk setiap indikator
 - ✅ **Sentiment Analysis** - TextBlob (Phase 2a, simple & lightweight) dengan opsi FinBERT (Phase 2b, ML-based)
-- ✅ **Signal Generation** - Menggabungkan semua analisis menjadi trading signal
-- ✅ **Risk Management** - Stop-loss, take-profit, position sizing
-- ✅ **Confidence Scoring** - Weighted voting system
+- ✅ **Signal Generation** - Menggabungkan technical + sentiment menjadi trading signal dengan weighted scoring
+- ✅ **ATR-based Risk Management** - Stop-loss dan take-profit berdasarkan volatilitas (ATR)
+- ✅ **Confidence Scoring** - Confidence level 0-100% berdasarkan signal strength
 
 ## 📦 Dependencies
 
@@ -124,23 +125,36 @@ python -m analysis.main_analysis
 
 📋 Reasons:
    1. Strong buy signal (score: +0.65)
-   2. RSI oversold (28.5)
-   3. MACD bullish crossover
-   4. EMA alignment bullish
+   2. RSI 28.5 < 30 → potensi rebound
+   3. MACD histogram baru crossover ke positif → sinyal beli kuat
+   4. Harga > EMA20 > EMA50 > EMA200 → uptrend kuat
    5. News sentiment bullish (+0.72)
 
-🛡️  Risk Management:
-   Stop Loss: $41,454.74
-   Take Profit: $44,415.79
-   Risk/Reward Ratio: 2.50
+🛡️  Risk Management (ATR-based):
+   ATR: 425.50
+   Stop Loss: $41,449.75 (2.02%)
+   Take Profit: $44,413.50
+   Risk/Reward Ratio: 2.50:1
    Position Size: 10.0% of portfolio
 
 📊 Technical Indicators:
-   RSI: 28.50 (BUY)
-   MACD: 125.50 (BUY)
+   RSI: 28.50
+   MACD: 125.50 (Signal: 98.30)
    EMA 20/50/200: 42150.00 / 41800.00 / 40500.00
    Bollinger Bands: 41500.00 - 43000.00
    Volume Ratio: 1.85x
+
+🔍 Interpretation:
+   RSI: OVERSOLD (score: +80)
+      → RSI 28.5 < 30 → potensi rebound
+   MACD: BULLISH_CROSSOVER (score: +90)
+      → MACD histogram baru crossover ke positif → sinyal beli kuat
+   EMA: STRONG_UPTREND (score: +85)
+      → Harga > EMA20 > EMA50 > EMA200 → uptrend kuat
+   BOLLINGER: OVERSOLD (score: +70)
+      → Harga (42300.75) menyentuh lower band → potensi bounce
+   VOLUME: HIGH (score: +30)
+      → Volume 1.85x rata-rata → aktivitas tinggi
 
 📰 Sentiment Analysis:
    Score: +0.720
@@ -151,36 +165,79 @@ python -m analysis.main_analysis
 
 ## 🔍 Penjelasan Komponen
 
-### 1. Technical Indicators (`technical_indicators.py`)
+### 1. Technical Analyzer (`technical_indicators.py`)
 
-#### RSI (Relative Strength Index)
+Class `TechnicalAnalyzer` menghitung dan menginterpretasi indikator teknikal dengan scoring system (-100 to +100).
+
+#### Struktur Return
+```python
+{
+    "indicators": {...},        # Nilai mentah indikator
+    "interpretation": {...},    # Interpretasi dengan score & reason
+    "latest_price": 42500.0,    # Harga terbaru
+    "timestamp": "2024-01-15T10:00:00"
+}
+```
+
+#### Indikator yang Dihitung
+
+**1. RSI (Relative Strength Index)**
 - **Range**: 0-100
-- **Overbought**: > 70 (potensi turun)
-- **Oversold**: < 30 (potensi naik)
-- **Signal**: BUY jika < 30, SELL jika > 70
+- **Interpretation**:
+  - `< 30`: OVERSOLD (score: +80) → potensi rebound
+  - `> 70`: OVERBOUGHT (score: -80) → potensi koreksi
+  - `30-45`: WEAK (score: +20) → momentum lemah
+  - `55-70`: STRONG (score: -20) → rawan jenuh
+  - `45-55`: NEUTRAL (score: 0)
 
-#### MACD (Moving Average Convergence Divergence)
+**2. MACD (Moving Average Convergence Divergence)**
 - **Components**: MACD line, Signal line, Histogram
-- **Bullish**: MACD > Signal line
-- **Bearish**: MACD < Signal line
-- **Signal**: BUY jika MACD crossover ke atas
+- **Interpretation**:
+  - Histogram crossover positif: BULLISH_CROSSOVER (score: +90)
+  - Histogram crossover negatif: BEARISH_CROSSOVER (score: -90)
+  - Histogram positif: BULLISH (score: +40)
+  - Histogram negatif: BEARISH (score: -40)
 
-#### EMA (Exponential Moving Average)
+**3. EMA (Exponential Moving Average)**
 - **Periods**: 20, 50, 200
-- **Uptrend**: Price > EMA20 > EMA50 > EMA200
-- **Downtrend**: Price < EMA20 < EMA50 < EMA200
-- **Signal**: BUY jika alignment bullish
+- **Interpretation**:
+  - Price > EMA20 > EMA50 > EMA200: STRONG_UPTREND (score: +85)
+  - Price < EMA20 < EMA50 < EMA200: STRONG_DOWNTREND (score: -85)
+  - Price > EMA200: UPTREND (score: +40)
+  - Price < EMA200: DOWNTREND (score: -40)
 
-#### Bollinger Bands
+**4. Bollinger Bands**
 - **Components**: Upper, Middle (SMA), Lower bands
-- **Overbought**: Price > Upper band
-- **Oversold**: Price < Lower band
-- **Signal**: BUY jika price < lower band
+- **Interpretation**:
+  - Price ≤ Lower band: OVERSOLD (score: +70) → potensi bounce
+  - Price ≥ Upper band: OVERBOUGHT (score: -70) → potensi pullback
+  - Price < Middle: BEARISH (score: -20)
+  - Price > Middle: BULLISH (score: +20)
 
-#### Volume Analysis
-- **Volume Ratio**: Current volume / Average volume
-- **High Volume**: > 1.5x average
-- **Signal**: BUY jika high volume + price up
+**5. Volume Analysis**
+- **Volume Ratio**: Current volume / 20-period SMA
+- **Interpretation**:
+  - `> 2.0x`: VERY_HIGH (score: +50) → konfirmasi kuat
+  - `> 1.5x`: HIGH (score: +30) → aktivitas tinggi
+  - `< 0.5x`: LOW (score: -30) → sinyal lemah
+  - `0.5-2.0x`: NORMAL (score: 0)
+
+**6. ATR (Average True Range)**
+- **Purpose**: Volatility measurement untuk stop-loss calculation
+- **Usage**: Stop-loss = 2x ATR dari entry price
+- **Output**: ATR value dan ATR percentage
+
+#### ATR-based Stop-Loss
+```python
+# Contoh perhitungan stop-loss
+stop_loss = price - (ATR * 2.0)  # Untuk LONG
+stop_loss = price + (ATR * 2.0)  # Untuk SHORT
+```
+
+**Keuntungan ATR-based:**
+- Adaptive terhadap volatilitas market
+- Tidak fixed percentage (lebih fleksibel)
+- Berdasarkan actual price movement
 
 ### 2. Sentiment Analysis (`sentiment_analysis.py`)
 
@@ -201,41 +258,46 @@ python -m analysis.main_analysis
 
 ### 3. Signal Generator (`signal_generator.py`)
 
-#### Weighted Voting System
-- **Technical**: 70% weight
-- **Sentiment**: 30% weight
-- **Final Score**: (tech_score × 0.7) + (sentiment_score × 0.3)
+#### Weighted Scoring System
+- **Technical Interpretation**: 70% weight (average of indicator scores)
+- **Sentiment Analysis**: 30% weight
+- **Final Score**: (tech_avg_score × 0.7) + (sentiment_score × 0.3)
 
 #### Signal Thresholds
-- **BUY**: score > 0.2
-- **SELL**: score < -0.2
-- **HOLD**: -0.2 ≤ score ≤ 0.2
+- **BUY**: final_score > 0.2
+- **SELL**: final_score < -0.2
+- **HOLD**: -0.2 ≤ final_score ≤ 0.2
 
 #### Confidence Calculation
 - Confidence = |final_score| × 100
 - Range: 0-100%
 
-#### Risk Management
-- **Stop Loss**: 2% dari entry price
-- **Take Profit**: 5% dari entry price
-- **Risk/Reward Ratio**: 2.5:1
-- **Position Size**: 10% of portfolio
+#### ATR-based Risk Management
+- **Stop Loss**: 2x ATR dari entry price
+- **Take Profit**: 2.5x risk distance (R:R ratio 2.5:1)
+- **Position Size**: 10% of portfolio (default)
+- **ATR Multiplier**: 2.0 (configurable)
+
+**Keuntungan ATR-based:**
+- Adaptive terhadap volatilitas market
+- Stop-loss lebih akurat daripada fixed percentage
+- Risk/reward ratio konsisten
 
 ## 🧪 Testing
 
 ### Test Individual Components
 
 ```python
-from analysis.technical_indicators import TechnicalIndicators
+from analysis.technical_indicators import TechnicalAnalyzer
 from analysis.sentiment_analysis import SentimentAnalyzer
 from analysis.signal_generator import SignalGenerator
-import pandas as pd
 
-# Test Technical Indicators
-ti = TechnicalIndicators()
-indicators = ti.calculate_all(df)
-print(f"RSI: {indicators['rsi']}")
-print(f"Signal: {indicators['signal']}")
+# Test Technical Analyzer
+ta = TechnicalAnalyzer()
+result = ta.calculate_all(candles_list)
+print(f"Latest Price: {result['latest_price']}")
+print(f"RSI: {result['indicators']['rsi']['value']}")
+print(f"RSI Interpretation: {result['interpretation']['rsi']}")
 
 # Test Sentiment Analysis
 sa = SentimentAnalyzer()
@@ -245,9 +307,11 @@ print(f"Label: {sentiment['label']}")
 
 # Test Signal Generator
 sg = SignalGenerator()
-signal = sg.generate(df, news_texts, "BTC/USDT", "1h")
+signal = sg.generate(candles_list, news_texts, "BTC/USDT", "1h")
 print(f"Action: {signal['action']}")
 print(f"Confidence: {signal['confidence']}%")
+print(f"Stop Loss: ${signal['risk_management']['stop_loss']}")
+print(f"ATR: {signal['risk_management']['atr']}")
 ```
 
 ## 📈 Contoh Penggunaan
@@ -350,10 +414,11 @@ generator = SignalGenerator(use_ml_sentiment=True)
 
 **Analysis Engine: COMPLETE ✅**
 
-- ✅ Technical indicators (RSI, MACD, EMA, BB, Volume) - menggunakan **pandas-ta**
+- ✅ Technical indicators (RSI, MACD, EMA, BB, Volume, ATR) - menggunakan **pandas-ta**
+- ✅ Interpretation system dengan scoring (-100 to +100)
 - ✅ Sentiment analysis - menggunakan **TextBlob** (simple & lightweight)
-- ✅ Signal generation
-- ✅ Risk management
+- ✅ Signal generation dengan weighted scoring
+- ✅ ATR-based risk management
 - ✅ Confidence scoring
 - ✅ Testing entry point
 
