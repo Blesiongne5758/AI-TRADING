@@ -11,6 +11,8 @@ from typing import List
 from loguru import logger
 
 from data_collector.database import DatabaseManager
+from .technical_indicators import TechnicalAnalyzer
+from .sentiment_analysis import SentimentAnalyzer
 from .signal_generator import SignalGenerator
 
 
@@ -39,61 +41,70 @@ async def analyze_symbol(symbol: str, timeframe: str = "1h") -> None:
     
     logger.info(f"📊 Loaded {len(candles)} candles dan {len(news)} news articles")
     
-    # 3. Generate signal
-    generator = SignalGenerator(use_finbert=False)
-    signal = generator.generate(candles, news, symbol, timeframe)
+    # 3. Technical Analysis
+    tech_analyzer = TechnicalAnalyzer()
+    technical_result = tech_analyzer.calculate_all(candles)
     
-    # 4. Print results
-    print(f"\n📈 SIGNAL: {signal['action']}")
-    print(f"🎯 Confidence: {signal['confidence']}%")
-    print(f"💰 Current Price: ${signal['price']:,.2f}")
+    if technical_result is None:
+        logger.warning(f"❌ Technical analysis gagal untuk {symbol}")
+        return
+    
+    # 4. Sentiment Analysis
+    sentiment_analyzer = SentimentAnalyzer(use_finbert=False)
+    sentiment_result = sentiment_analyzer.analyze_news_batch(news)
+    
+    # 5. Generate Signal
+    signal_gen = SignalGenerator()
+    signal = signal_gen.generate_signal(
+        symbol=symbol,
+        timeframe=timeframe,
+        technical_analysis=technical_result,
+        sentiment_analysis=sentiment_result,
+    )
+    
+    # 6. Print results
+    print(f"\n📈 SIGNAL: {signal['signal']}")
+    print(f"🎯 Confidence: {signal['confidence']:.1f}%")
+    print(f"💰 Current Price: ${signal['latest_price']:,.2f}")
+    print(f"📊 Final Score: {signal['final_score']:+.2f}")
     
     print(f"\n📋 Reasons:")
     for i, reason in enumerate(signal['reasons'], 1):
         print(f"   {i}. {reason}")
     
-    print(f"\n🛡️  Risk Management (ATR-based):")
-    rm = signal['risk_management']
-    print(f"   ATR: {rm.get('atr', 0):.2f}")
-    print(f"   Stop Loss: ${rm['stop_loss']:,.2f} ({rm.get('stop_loss_distance_percent', 0):.2f}%)")
-    print(f"   Take Profit: ${rm['take_profit']:,.2f}")
-    print(f"   Risk/Reward Ratio: {rm['risk_reward_ratio']:.2f}:1")
-    print(f"   Position Size: {rm['position_size_percent']:.1f}% of portfolio")
+    print(f"\n🎯 Component Scores:")
+    for component, data in signal['component_scores'].items():
+        score = data['score']
+        sig = data['signal']
+        weight = data['weight']
+        print(f"   {component.upper():12} | Score: {score:+6.1f} | Signal: {sig:20} | Weight: {weight:.0%}")
     
-    print(f"\n📊 Technical Indicators:")
-    tech = signal['technical']
-    print(f"   RSI: {tech.get('rsi', {}).get('value', 0):.2f}")
-    print(f"   MACD: {tech.get('macd', {}).get('macd', 0):.2f} (Signal: {tech.get('macd', {}).get('signal', 0):.2f})")
-    print(f"   EMA 20/50/200: {tech.get('ema', {}).get('ema_20', 0):.2f} / {tech.get('ema', {}).get('ema_50', 0):.2f} / {tech.get('ema', {}).get('ema_200', 0):.2f}")
-    print(f"   Bollinger Bands: {tech.get('bollinger', {}).get('lower', 0):.2f} - {tech.get('bollinger', {}).get('upper', 0):.2f}")
-    print(f"   Volume Ratio: {tech.get('volume', {}).get('ratio', 0):.2f}x")
-    
-    print(f"\n🔍 Interpretation:")
-    interp = signal['interpretation']
-    for indicator, data in interp.items():
-        signal_name = data.get('signal', 'N/A')
-        score = data.get('score', 0)
-        reason = data.get('reason', '')
-        print(f"   {indicator.upper()}: {signal_name} (score: {score:+d})")
-        print(f"      → {reason}")
+    print(f"\n🛡️  Suggested Actions:")
+    actions = signal['suggested_actions']
+    print(f"   Action: {actions['action']}")
+    if actions['action'] != "HOLD":
+        print(f"   Entry: ${actions['entry']:,.2f}")
+        print(f"   Stop Loss: ${actions['stop_loss']:,.2f} ({actions['sl_distance_percent']:.2f}%)")
+        print(f"   Take Profit: ${actions['take_profit']:,.2f} ({actions['tp_distance_percent']:.2f}%)")
+        print(f"   Risk/Reward Ratio: {actions['risk_reward_ratio']:.1f}:1")
+        print(f"   Position Size: {actions['position_size_percent']:.1f}% of portfolio")
+        print(f"   Max Risk: {actions['max_risk_percent']:.1f}% of portfolio")
+    else:
+        print(f"   Reason: {actions['reason']}")
     
     print(f"\n📰 Sentiment Analysis:")
-    sent = signal['sentiment']
-    print(f"   Overall Score: {sent.get('overall_score', 0):+.3f}")
-    print(f"   Overall Label: {sent.get('overall_label', 'N/A')}")
-    print(f"   Total Articles: {sent.get('total_articles', 0)}")
-    print(f"   Distribution: {sent.get('positive_count', 0)} positive, {sent.get('negative_count', 0)} negative, {sent.get('neutral_count', 0)} neutral")
+    print(f"   Overall Score: {signal['sentiment_score']:+.3f}")
+    print(f"   Overall Label: {signal['sentiment_label']}")
+    print(f"   Total Articles: {sentiment_result['total_articles']}")
+    print(f"   Distribution: {sentiment_result['positive_count']} positive, {sentiment_result['negative_count']} negative, {sentiment_result['neutral_count']} neutral")
     
-    print(f"\n💡 Sentiment Impact:")
-    impact = signal['sentiment_impact']
-    print(f"   Impact: {impact.get('impact', 'N/A')}")
-    print(f"   Weight in Decision: {impact.get('weight', 0):.0%}")
-    print(f"   Reason: {impact.get('reason', 'N/A')}")
+    print(f"\n⚠️  Risk Warning:")
+    print(f"   {signal['risk_warning']}")
     
     # Show top 3 news articles with sentiment
-    if sent.get('articles'):
+    if sentiment_result.get('articles'):
         print(f"\n📰 Top News Articles:")
-        for i, article in enumerate(sent['articles'][:3], 1):
+        for i, article in enumerate(sentiment_result['articles'][:3], 1):
             sent_data = article.get('sentiment', {})
             print(f"   {i}. [{article.get('source', 'Unknown')}] {article.get('title', 'No title')[:60]}...")
             print(f"      Sentiment: {sent_data.get('label', 'N/A')} (score: {sent_data.get('score', 0):+.3f})")

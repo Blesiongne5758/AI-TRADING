@@ -130,44 +130,36 @@ python -m analysis.main_analysis
 ======================================================================
 🔍 Analyzing BTC/USDT [1h]
 ======================================================================
-📊 Loaded 500 candles dan 60 news articles
+📊 Loaded 500 candles dan 20 news articles
 
-📈 SIGNAL: BUY
-🎯 Confidence: 75%
+📈 SIGNAL: STRONG_BUY
+🎯 Confidence: 85.5%
 💰 Current Price: $42,300.75
+📊 Final Score: +72.35
 
 📋 Reasons:
-   1. Strong buy signal (score: +0.65)
-   2. RSI 28.5 < 30 → potensi rebound
-   3. MACD histogram baru crossover ke positif → sinyal beli kuat
-   4. Harga > EMA20 > EMA50 > EMA200 → uptrend kuat
-   5. News sentiment bullish (+0.72)
+   1. [RSI] RSI 28.5 < 30 → potensi rebound
+   2. [MACD] MACD histogram baru crossover ke positif → sinyal beli kuat
+   3. [EMA] Harga > EMA20 > EMA50 > EMA200 → uptrend kuat
+   4. [BOLLINGER] Harga (42300.75) menyentuh lower band → potensi bounce
+   5. [SENTIMENT] POSITIVE → 12 positif, 3 negatif dari 20 artikel berita
 
-🛡️  Risk Management (ATR-based):
-   ATR: 425.50
-   Stop Loss: $41,449.75 (2.02%)
-   Take Profit: $44,413.50
-   Risk/Reward Ratio: 2.50:1
+🎯 Component Scores:
+   RSI          | Score:  +80.0 | Signal: OVERSOLD           | Weight: 15%
+   MACD         | Score:  +90.0 | Signal: BULLISH_CROSSOVER  | Weight: 25%
+   EMA          | Score:  +85.0 | Signal: STRONG_UPTREND     | Weight: 25%
+   BOLLINGER    | Score:  +70.0 | Signal: OVERSOLD           | Weight: 15%
+   VOLUME       | Score:  +30.0 | Signal: HIGH               | Weight: 10%
+   SENTIMENT    | Score:  +0.45 | Signal: POSITIVE           | Weight: 10%
+
+🛡️  Suggested Actions:
+   Action: OPEN_LONG
+   Entry: $42,300.75
+   Stop Loss: $41,450.75 (2.01%)
+   Take Profit: $44,000.75 (4.02%)
+   Risk/Reward Ratio: 2.0:1
    Position Size: 10.0% of portfolio
-
-📊 Technical Indicators:
-   RSI: 28.50
-   MACD: 125.50 (Signal: 98.30)
-   EMA 20/50/200: 42150.00 / 41800.00 / 40500.00
-   Bollinger Bands: 41500.00 - 43000.00
-   Volume Ratio: 1.85x
-
-🔍 Interpretation:
-   RSI: OVERSOLD (score: +80)
-      → RSI 28.5 < 30 → potensi rebound
-   MACD: BULLISH_CROSSOVER (score: +90)
-      → MACD histogram baru crossover ke positif → sinyal beli kuat
-   EMA: STRONG_UPTREND (score: +85)
-      → Harga > EMA20 > EMA50 > EMA200 → uptrend kuat
-   BOLLINGER: OVERSOLD (score: +70)
-      → Harga (42300.75) menyentuh lower band → potensi bounce
-   VOLUME: HIGH (score: +30)
-      → Volume 1.85x rata-rata → aktivitas tinggi
+   Max Risk: 2.0% of portfolio
 
 📰 Sentiment Analysis:
    Overall Score: +0.450
@@ -175,10 +167,8 @@ python -m analysis.main_analysis
    Total Articles: 20
    Distribution: 12 positive, 3 negative, 5 neutral
 
-💡 Sentiment Impact:
-   Impact: HIGH
-   Weight in Decision: 40%
-   Reason: Sentimen kuat, bobot signifikan dalam keputusan
+⚠️  Risk Warning:
+   Sinyal sangat kuat → pastikan bukan fake breakout/pump & dump | ⚠️  Ini adalah analisis otomatis, BUKAN saran keuangan. Selalu lakukan riset mandiri (DYOR).
 
 📰 Top News Articles:
    1. [CoinDesk] Bitcoin reaches new all-time high as institutional...
@@ -187,6 +177,8 @@ python -m analysis.main_analysis
       Sentiment: POSITIVE (score: +0.720)
    3. [Decrypt] Solana DeFi ecosystem continues to grow with new...
       Sentiment: POSITIVE (score: +0.680)
+
+======================================================================
 ```
 
 ## 🔍 Penjelasan Komponen
@@ -331,30 +323,160 @@ Technical analysis weight = 100% - sentiment weight
 
 ### 3. Signal Generator (`signal_generator.py`)
 
-#### Weighted Scoring System
-- **Technical Interpretation**: 70% weight (average of indicator scores)
-- **Sentiment Analysis**: 30% weight
-- **Final Score**: (tech_avg_score × 0.7) + (sentiment_score × 0.3)
+Class `SignalGenerator` menggabungkan analisis teknikal dan sentimen menjadi trading signal yang actionable.
 
-#### Signal Thresholds
-- **BUY**: final_score > 0.2
-- **SELL**: final_score < -0.2
-- **HOLD**: -0.2 ≤ final_score ≤ 0.2
+#### Architecture
+```python
+SignalGenerator
+├── WEIGHTS (constants)
+│   ├── rsi: 0.15
+│   ├── macd: 0.25
+│   ├── ema: 0.25
+│   ├── bollinger: 0.15
+│   ├── volume: 0.10
+│   └── sentiment: 0.10
+│
+├── THRESHOLDS (constants)
+│   ├── strong_buy: 75
+│   ├── buy: 55
+│   ├── neutral: 45
+│   ├── sell: 55
+│   └── strong_sell: 75
+│
+└── Methods
+    ├── generate_signal()          # Main entry point
+    ├── _score_to_signal()         # Convert score to signal
+    ├── _get_sentiment_impact()    # Sentiment impact analysis
+    ├── _collect_reasons()         # Collect reasons for signal
+    ├── _calculate_suggested_actions()  # Entry/SL/TP calculation
+    └── _generate_risk_warning()   # Risk warning generation
+```
 
-#### Confidence Calculation
-- Confidence = |final_score| × 100
-- Range: 0-100%
+#### Main Method: `generate_signal()`
+
+**Input:**
+```python
+signal_gen.generate_signal(
+    symbol="BTC/USDT",
+    timeframe="1h",
+    technical_analysis=technical_result,  # From TechnicalAnalyzer
+    sentiment_analysis=sentiment_result   # From SentimentAnalyzer
+)
+```
+
+**Output Structure:**
+```python
+{
+    "symbol": "BTC/USDT",
+    "timeframe": "1h",
+    "timestamp": "2024-01-15T10:00:00",
+    "signal": "STRONG_BUY",           # STRONG_BUY, BUY, NEUTRAL, SELL, STRONG_SELL
+    "confidence": 85.5,               # 0-100
+    "final_score": 72.35,             # -100 to +100
+    "latest_price": 42300.75,
+    "technical_score": 68.50,         # Weighted technical score
+    "sentiment_score": 0.450,         # -1 to +1
+    "sentiment_label": "POSITIVE",
+    
+    "component_scores": {             # Detailed breakdown
+        "rsi": {"score": 80, "signal": "OVERSOLD", "weight": 0.15},
+        "macd": {"score": 90, "signal": "BULLISH_CROSSOVER", "weight": 0.25},
+        "ema": {"score": 85, "signal": "STRONG_UPTREND", "weight": 0.25},
+        "bollinger": {"score": 70, "signal": "OVERSOLD", "weight": 0.15},
+        "volume": {"score": 30, "signal": "HIGH", "weight": 0.10},
+        "sentiment": {"score": 0.450, "label": "POSITIVE", "impact": "HIGH", "weight": 0.10}
+    },
+    
+    "reasons": [                      # Top reasons (max 7)
+        "[RSI] RSI 28.5 < 30 → potensi rebound",
+        "[MACD] MACD histogram baru crossover ke positif → sinyal beli kuat",
+        "[EMA] Harga > EMA20 > EMA50 > EMA200 → uptrend kuat",
+        "[SENTIMENT] POSITIVE → 12 positif, 3 negatif dari 20 artikel berita"
+    ],
+    
+    "suggested_actions": {            # Actionable trading plan
+        "action": "OPEN_LONG",
+        "entry": 42300.75,
+        "stop_loss": 41450.75,        # 2x ATR
+        "take_profit": 44000.75,      # 2x SL distance
+        "risk_reward_ratio": 2.0,
+        "position_size_percent": 10,  # Based on confidence
+        "max_risk_percent": 2.0,
+        "sl_distance_percent": 2.01,
+        "tp_distance_percent": 4.02
+    },
+    
+    "risk_warning": "⚠️  Ini adalah analisis otomatis, BUKAN saran keuangan. Selalu lakukan riset mandiri (DYOR)."
+}
+```
+
+#### Signal Types & Thresholds
+
+| Signal | Score Range | Confidence | Action |
+|--------|-------------|------------|--------|
+| **STRONG_BUY** | ≥ 60 | 60-100% | OPEN_LONG |
+| **BUY** | 30 to 59 | 30-59% | OPEN_LONG |
+| **NEUTRAL** | -29 to 29 | High (100-|score|) | HOLD |
+| **SELL** | -59 to -30 | 30-59% | OPEN_SHORT |
+| **STRONG_SELL** | ≤ -60 | 60-100% | OPEN_SHORT |
+
+#### Scoring System
+
+**1. Technical Score (90% weight)**
+```python
+weighted_tech_score = sum(
+    tech_scores[k] * WEIGHTS[k]
+    for k in ["rsi", "macd", "ema", "bollinger", "volume"]
+)
+```
+
+**2. Sentiment Score (10% weight)**
+```python
+sentiment_impact = _get_sentiment_impact(sentiment_score)
+sentiment_scaled = sentiment_score * 100 * sentiment_impact["weight"]
+```
+
+**3. Final Score**
+```python
+final_score = (weighted_tech_score * 0.9) + (sentiment_scaled * 0.1)
+```
+
+#### Position Sizing (Based on Confidence)
+
+| Confidence | Position Size | Risk Level |
+|------------|---------------|------------|
+| ≥ 75% | 10% of portfolio | Aggressive |
+| 60-74% | 5% of portfolio | Moderate |
+| < 60% | 2% of portfolio | Conservative |
+
+**Max Risk per Trade:** 2% of portfolio (industry standard)
 
 #### ATR-based Risk Management
-- **Stop Loss**: 2x ATR dari entry price
-- **Take Profit**: 2.5x risk distance (R:R ratio 2.5:1)
-- **Position Size**: 10% of portfolio (default)
-- **ATR Multiplier**: 2.0 (configurable)
+
+**Stop Loss Calculation:**
+```python
+sl_distance = atr * 2  # 2x ATR
+stop_loss = price - sl_distance  # For LONG
+```
+
+**Take Profit Calculation:**
+```python
+tp_distance = sl_distance * 2.0  # Risk/Reward ratio 2:1
+take_profit = price + tp_distance  # For LONG
+```
 
 **Keuntungan ATR-based:**
-- Adaptive terhadap volatilitas market
-- Stop-loss lebih akurat daripada fixed percentage
-- Risk/reward ratio konsisten
+- ✅ Adaptive terhadap volatilitas market
+- ✅ Stop-loss lebih akurat daripada fixed percentage
+- ✅ Risk/reward ratio konsisten (2:1)
+- ✅ Position sizing berdasarkan confidence
+
+#### Risk Warning System
+
+Automatic risk warnings based on conditions:
+- **Low Confidence (< 60%)**: "Confidence rendah → pertimbangkan untuk tidak entry"
+- **Strong Signal**: "Sinyal sangat kuat → pastikan bukan fake breakout/pump & dump"
+- **Always**: "⚠️  Ini adalah analisis otomatis, BUKAN saran keuangan. Selalu lakukan riset mandiri (DYOR)."
 
 ## 🧪 Testing
 
@@ -365,40 +487,56 @@ from analysis.technical_indicators import TechnicalAnalyzer
 from analysis.sentiment_analysis import SentimentAnalyzer
 from analysis.signal_generator import SignalGenerator
 
-# Test Technical Analyzer
+# 1. Test Technical Analyzer
 ta = TechnicalAnalyzer()
-result = ta.calculate_all(candles_list)
-print(f"Latest Price: {result['latest_price']}")
-print(f"RSI: {result['indicators']['rsi']['value']}")
-print(f"RSI Interpretation: {result['interpretation']['rsi']}")
+technical_result = ta.calculate_all(candles_list)
+print(f"Latest Price: ${technical_result['latest_price']:,.2f}")
+print(f"RSI: {technical_result['indicators']['rsi']['value']:.2f}")
+print(f"RSI Interpretation: {technical_result['interpretation']['rsi']}")
 
-# Test Sentiment Analysis
-sa = SentimentAnalyzer(use_finbert=False)  # atau True untuk FinBERT
-
-# Analyze single text
-result = sa.analyze_text("Bitcoin reaches new all-time high")
-print(f"Score: {result['score']}")
-print(f"Label: {result['label']}")
-
-# Analyze batch of news
+# 2. Test Sentiment Analysis
+sa = SentimentAnalyzer(use_finbert=False)
 news_items = [
-    {"title": "Bitcoin rises", "summary": "BTC price up 5%", "source": "CoinDesk", "link": "..."},
+    {"title": "Bitcoin rises", "summary": "BTC up 5%", "source": "CoinDesk", "link": "..."},
     {"title": "Market crash", "summary": "Crypto down 10%", "source": "CoinTelegraph", "link": "..."},
 ]
-batch_result = sa.analyze_news_batch(news_items)
-print(f"Overall: {batch_result['overall_label']} ({batch_result['overall_score']:+.3f})")
+sentiment_result = sa.analyze_news_batch(news_items)
+print(f"Overall: {sentiment_result['overall_label']} ({sentiment_result['overall_score']:+.3f})")
+print(f"Distribution: {sentiment_result['positive_count']} pos, {sentiment_result['negative_count']} neg")
 
-# Get sentiment impact
-impact = sa.get_sentiment_impact(batch_result['overall_score'])
-print(f"Impact: {impact['impact']} (weight: {impact['weight']:.0%})")
-
-# Test Signal Generator
+# 3. Test Signal Generator
 sg = SignalGenerator()
-signal = sg.generate(candles_list, news_texts, "BTC/USDT", "1h")
-print(f"Action: {signal['action']}")
-print(f"Confidence: {signal['confidence']}%")
-print(f"Stop Loss: ${signal['risk_management']['stop_loss']}")
-print(f"ATR: {signal['risk_management']['atr']}")
+signal = sg.generate_signal(
+    symbol="BTC/USDT",
+    timeframe="1h",
+    technical_analysis=technical_result,
+    sentiment_analysis=sentiment_result
+)
+
+print(f"\n📈 Signal: {signal['signal']}")
+print(f"🎯 Confidence: {signal['confidence']:.1f}%")
+print(f"💰 Price: ${signal['latest_price']:,.2f}")
+print(f"📊 Final Score: {signal['final_score']:+.2f}")
+
+print(f"\n🛡️  Suggested Actions:")
+actions = signal['suggested_actions']
+print(f"   Action: {actions['action']}")
+if actions['action'] != "HOLD":
+    print(f"   Entry: ${actions['entry']:,.2f}")
+    print(f"   Stop Loss: ${actions['stop_loss']:,.2f}")
+    print(f"   Take Profit: ${actions['take_profit']:,.2f}")
+    print(f"   Position Size: {actions['position_size_percent']:.1f}%")
+
+print(f"\n⚠️  Risk Warning:")
+print(f"   {signal['risk_warning']}")
+```
+
+### Run Full Analysis
+
+```bash
+# Pastikan data collector sudah berjalan
+cd backend
+python -m analysis.main_analysis
 ```
 
 ## 📈 Contoh Penggunaan
@@ -513,17 +651,47 @@ generator = SignalGenerator(use_ml_sentiment=True)
 
 **Analysis Engine: COMPLETE ✅**
 
+### Technical Analysis
 - ✅ Technical indicators (RSI, MACD, EMA, BB, Volume, ATR) - menggunakan **pandas-ta**
 - ✅ Interpretation system dengan scoring (-100 to +100)
-- ✅ Sentiment analysis dengan dual mode:
+- ✅ Detailed reason untuk setiap indikator
+
+### Sentiment Analysis
+- ✅ Dual mode:
   - **TextBlob** (MVP, cepat, ringan ~1MB)
   - **FinBERT** (Advanced, akurat, ~500MB, optional)
 - ✅ Sentiment impact analysis dengan dynamic weighting
 - ✅ Batch news analysis dengan distribusi positive/negative/neutral
-- ✅ Signal generation dengan weighted scoring (technical + sentiment)
-- ✅ ATR-based risk management
-- ✅ Confidence scoring
-- ✅ Testing entry point
+- ✅ Top news articles dengan sentiment detail
+
+### Signal Generation
+- ✅ Weighted scoring system (technical 90% + sentiment 10%)
+- ✅ Component scores breakdown (RSI, MACD, EMA, BB, Volume, Sentiment)
+- ✅ 5 signal types: STRONG_BUY, BUY, NEUTRAL, SELL, STRONG_SELL
+- ✅ Confidence scoring (0-100%)
+- ✅ Max 7 reasons untuk clarity
+
+### Risk Management
+- ✅ ATR-based stop-loss (2x ATR)
+- ✅ ATR-based take-profit (2:1 risk/reward ratio)
+- ✅ Position sizing berdasarkan confidence:
+  - ≥ 75% confidence → 10% position
+  - 60-74% confidence → 5% position
+  - < 60% confidence → 2% position
+- ✅ Max 2% risk per trade (industry standard)
+- ✅ Suggested entry, stop-loss, take-profit
+
+### Safety Features
+- ✅ Risk warning system
+- ✅ Low confidence warning
+- ✅ Strong signal warning (fake breakout detection)
+- ✅ DYOR disclaimer (Not financial advice)
+
+### Testing & Documentation
+- ✅ Testing entry point (`main_analysis.py`)
+- ✅ Comprehensive documentation
+- ✅ Example output
+- ✅ API reference
 
 ---
 

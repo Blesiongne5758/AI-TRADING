@@ -1,304 +1,278 @@
 """
 Signal Generator
-Menggabungkan technical indicators dan sentiment analysis menjadi trading signal
-
-Dependencies:
-    - pandas: Data manipulation
-    - TechnicalAnalyzer: Dari technical_indicators.py
-    - SentimentAnalyzer: Dari sentiment_analysis.py
+Menggabungkan analisis teknikal + sentimen menjadi trading signal
+dengan confidence score dan penjelasan yang mudah dipahami
 """
-
-import pandas as pd
 from typing import Dict, List, Optional
 from datetime import datetime
 from loguru import logger
 
-from .technical_indicators import TechnicalAnalyzer
-from .sentiment_analysis import SentimentAnalyzer
-
 
 class SignalGenerator:
-    """
-    Menghasilkan trading signals dari analisis teknikal dan sentimen
-    
-    Contoh penggunaan:
-        generator = SignalGenerator()
-        signal = generator.generate(candles_list, news_items)
-        print(signal['action'])  # 'BUY'
-        print(signal['confidence'])  # 75
-        print(signal['reasons'])  # ['RSI oversold', 'MACD bullish', ...]
-    """
-    
-    def __init__(self, use_finbert: bool = False):
+    """Menghasilkan trading signal dari analisis teknikal dan sentimen"""
+
+    # Bobot relatif setiap komponen dalam keputusan final
+    WEIGHTS = {
+        "rsi": 0.15,
+        "macd": 0.25,
+        "ema": 0.25,
+        "bollinger": 0.15,
+        "volume": 0.10,
+        "sentiment": 0.10,
+    }
+
+    # Threshold confidence untuk eksekusi
+    THRESHOLDS = {
+        "strong_buy": 75,
+        "buy": 55,
+        "neutral": 45,
+        "sell": 55,
+        "strong_sell": 75,
+    }
+
+    def generate_signal(
+        self,
+        symbol: str,
+        timeframe: str,
+        technical_analysis: Dict,
+        sentiment_analysis: Dict,
+    ) -> Dict:
         """
-        Initialize signal generator
+        Menghasilkan trading signal lengkap
         
         Args:
-            use_finbert: Gunakan FinBERT untuk sentiment analysis (lebih akurat, butuh ~500MB)
+            symbol: Trading pair (misal: "BTC/USDT")
+            timeframe: Timeframe analisis (misal: "1h")
+            technical_analysis: Output dari TechnicalAnalyzer.calculate_all()
+            sentiment_analysis: Output dari SentimentAnalyzer.analyze_news_batch()
+            
+        Returns:
+            Dict lengkap dengan signal, confidence, reasons, dan suggested actions
         """
-        self.technical = TechnicalAnalyzer()
-        self.sentiment = SentimentAnalyzer(use_finbert=use_finbert)
-    
-    def generate(self, candles: List[Dict], 
-                 news_items: Optional[List[Dict]] = None,
-                 symbol: str = "UNKNOWN",
-                 timeframe: str = "UNKNOWN") -> Dict:
-        """
-        Generate trading signal dari candles dan news
+        interpretation = technical_analysis["interpretation"]
+        indicators = technical_analysis["indicators"]
+
+        # === 1. Hitung Technical Score ===
+        tech_scores = {
+            "rsi": interpretation["rsi"]["score"],
+            "macd": interpretation["macd"]["score"],
+            "ema": interpretation["ema"]["score"],
+            "bollinger": interpretation["bollinger"]["score"],
+            "volume": interpretation["volume"]["score"],
+        }
+
+        # Weighted average technical score
+        weighted_tech_score = sum(
+            tech_scores[k] * self.WEIGHTS[k]
+            for k in ["rsi", "macd", "ema", "bollinger", "volume"]
+        )
+
+        # === 2. Hitung Sentiment Score ===
+        sentiment_score = sentiment_analysis["overall_score"]  # -1 sampai +1
+        sentiment_impact = self._get_sentiment_impact(sentiment_score)
         
-        Args:
-            candles: List of OHLCV dictionaries dari database
-            news_items: List of news dictionaries dengan format:
-                       [{"title": str, "summary": str, "source": str, "link": str}, ...]
-            symbol: Trading pair (e.g., "BTC/USDT")
-            timeframe: Timeframe (e.g., "1h")
+        # Konversi sentiment ke skala -100 sampai +100
+        sentiment_scaled = sentiment_score * 100 * sentiment_impact["weight"]
+
+        # === 3. Gabungkan jadi Final Score ===
+        # Technical = 90% bobot, Sentiment = 10% bobot
+        final_score = (weighted_tech_score * 0.9) + (sentiment_scaled * 0.1)
+
+        # === 4. Tentukan Signal ===
+        signal, confidence = self._score_to_signal(final_score)
+
+        # === 5. Kumpulkan Alasan ===
+        reasons = self._collect_reasons(interpretation, sentiment_analysis)
+
+        # === 6. Hitung Suggested Actions (Entry, SL, TP) ===
+        suggested_actions = self._calculate_suggested_actions(
+            signal=signal,
+            price=technical_analysis["latest_price"],
+            atr=indicators["atr"]["value"],
+            confidence=confidence,
+        )
+
+        # === 7. Bangun Output Lengkap ===
+        result = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "timestamp": datetime.now().isoformat(),
+            "signal": signal,
+            "confidence": round(confidence, 1),
+            "final_score": round(final_score, 2),
+            "latest_price": technical_analysis["latest_price"],
+            "technical_score": round(weighted_tech_score, 2),
+            "sentiment_score": round(sentiment_score, 3),
+            "sentiment_label": sentiment_analysis["overall_label"],
+            "component_scores": {
+                "rsi": {
+                    "score": tech_scores["rsi"],
+                    "signal": interpretation["rsi"]["signal"],
+                    "weight": self.WEIGHTS["rsi"],
+                },
+                "macd": {
+                    "score": tech_scores["macd"],
+                    "signal": interpretation["macd"]["signal"],
+                    "weight": self.WEIGHTS["macd"],
+                },
+                "ema": {
+                    "score": tech_scores["ema"],
+                    "signal": interpretation["ema"]["signal"],
+                    "weight": self.WEIGHTS["ema"],
+                },
+                "bollinger": {
+                    "score": tech_scores["bollinger"],
+                    "signal": interpretation["bollinger"]["signal"],
+                    "weight": self.WEIGHTS["bollinger"],
+                },
+                "volume": {
+                    "score": tech_scores["volume"],
+                    "signal": interpretation["volume"]["signal"],
+                    "weight": self.WEIGHTS["volume"],
+                },
+                "sentiment": {
+                    "score": round(sentiment_score, 3),
+                    "label": sentiment_analysis["overall_label"],
+                    "impact": sentiment_impact["impact"],
+                    "weight": self.WEIGHTS["sentiment"],
+                },
+            },
+            "reasons": reasons,
+            "suggested_actions": suggested_actions,
+            "risk_warning": self._generate_risk_warning(signal, confidence),
+        }
+
+        return result
+
+    def _score_to_signal(self, score: float) -> tuple:
+        """
+        Konversi final score (-100 sampai +100) ke signal + confidence
         
         Returns:
-            Dictionary dengan signal details
+            (signal: str, confidence: float 0-100)
         """
-        try:
-            # 1. Calculate technical indicators dengan interpretasi
-            technical_result = self.technical.calculate_all(candles)
-            
-            if technical_result is None:
-                logger.warning(f"❌ Data tidak cukup untuk {symbol} {timeframe}")
-                return self._empty_signal(symbol, timeframe, "Data tidak cukup (butuh 200+ candles)")
-            
-            # 2. Analyze sentiment (if news provided)
-            if news_items and len(news_items) > 0:
-                sentiment_result = self.sentiment.analyze_news_batch(news_items)
-                sentiment_impact = self.sentiment.get_sentiment_impact(sentiment_result['overall_score'])
-            else:
-                sentiment_result = {
-                    "overall_score": 0.0,
-                    "overall_label": "NEUTRAL",
-                    "positive_count": 0,
-                    "negative_count": 0,
-                    "neutral_count": 0,
-                    "total_articles": 0,
-                    "articles": [],
-                }
-                sentiment_impact = {
-                    "impact": "LOW",
-                    "weight": 0.1,
-                    "reason": "Tidak ada berita untuk dianalisis",
-                }
-            
-            # 3. Generate final signal dari interpretation scores
-            action, confidence, reasons = self._combine_signals(
-                technical_result['interpretation'], 
-                sentiment_result,
-                sentiment_impact
-            )
-            
-            # 4. Calculate risk management dengan ATR
-            current_price = technical_result['latest_price']
-            atr = technical_result['indicators']['atr']['value']
-            risk_management = self._calculate_risk_management(
-                current_price, atr, action
-            )
-            
-            # 5. Build result
-            result = {
-                'symbol': symbol,
-                'timeframe': timeframe,
-                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'action': action,
-                'confidence': confidence,
-                'price': round(current_price, 2),
-                'reasons': reasons,
-                'technical': technical_result['indicators'],
-                'interpretation': technical_result['interpretation'],
-                'sentiment': sentiment_result,
-                'sentiment_impact': sentiment_impact,
-                'risk_management': risk_management,
-            }
-            
-            logger.info(
-                f"📊 Signal generated: {symbol} {timeframe} - "
-                f"{action} ({confidence}% confidence)"
-            )
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error generating signal: {e}")
-            return self._empty_signal(symbol, timeframe, str(e))
-    
-    def _combine_signals(self, interpretation: Dict, sentiment_result: Dict, sentiment_impact: Dict) -> tuple:
-        """
-        Gabungkan interpretation scores dan sentiment menjadi signal final
-        
-        Menggunakan weighted scoring:
-        - Technical interpretation: 70% weight (default)
-        - Sentiment analysis: 30% weight (default, bisa di-adjust berdasarkan impact)
-        
-        Args:
-            interpretation: Dict dengan scores per indikator (-100 to +100)
-            sentiment_result: Sentiment analysis result dari analyze_news_batch
-            sentiment_impact: Impact analysis dari get_sentiment_impact
-        
-        Returns:
-            Tuple (action, confidence, reasons)
-        """
+        abs_score = abs(score)
+
+        if score >= 60:
+            return "STRONG_BUY", min(abs_score, 100)
+        elif score >= 30:
+            return "BUY", min(abs_score, 100)
+        elif score <= -60:
+            return "STRONG_SELL", min(abs_score, 100)
+        elif score <= -30:
+            return "SELL", min(abs_score, 100)
+        else:
+            return "NEUTRAL", 100 - abs_score  # Confidence tinggi untuk HOLD
+
+    def _get_sentiment_impact(self, score: float) -> Dict:
+        """Determinasi dampak sentimen"""
+        abs_score = abs(score)
+        if abs_score < 0.15:
+            return {"impact": "LOW", "weight": 0.1}
+        elif abs_score < 0.4:
+            return {"impact": "MODERATE", "weight": 0.25}
+        elif abs_score < 0.7:
+            return {"impact": "HIGH", "weight": 0.4}
+        else:
+            return {"impact": "VERY_HIGH", "weight": 0.5}
+
+    def _collect_reasons(
+        self, interpretation: Dict, sentiment_analysis: Dict
+    ) -> List[str]:
+        """Mengumpulkan alasan utama untuk signal"""
         reasons = []
-        
-        # ========================================
-        # 1. Technical Analysis (70% weight default)
-        # ========================================
-        tech_scores = []
-        
-        # Kumpulkan scores dari semua indikator
-        for indicator_name, data in interpretation.items():
-            score = data.get('score', 0)
-            signal = data.get('signal', 'NEUTRAL')
-            reason = data.get('reason', '')
-            
-            tech_scores.append(score)
-            
-            # Tambahkan reason jika signal kuat
-            if abs(score) >= 40:
-                reasons.append(reason)
-        
-        # Calculate average technical score (-100 to +100)
-        if len(tech_scores) > 0:
-            avg_tech_score = sum(tech_scores) / len(tech_scores)
-        else:
-            avg_tech_score = 0
-        
-        # Normalize ke -1.0 to +1.0
-        tech_score_normalized = avg_tech_score / 100
-        
-        # ========================================
-        # 2. Sentiment Analysis (dynamic weight berdasarkan impact)
-        # ========================================
-        sentiment_score = sentiment_result.get('overall_score', 0)
-        sentiment_label = sentiment_result.get('overall_label', 'NEUTRAL')
-        sentiment_weight = sentiment_impact.get('weight', 0.3)
-        
-        # Adjust technical weight berdasarkan sentiment weight
-        tech_weight = 1.0 - sentiment_weight
-        
-        if sentiment_label == 'POSITIVE':
-            reasons.append(f"News sentiment positive ({sentiment_score:+.2f}, impact: {sentiment_impact['impact']})")
-        elif sentiment_label == 'NEGATIVE':
-            reasons.append(f"News sentiment negative ({sentiment_score:+.2f}, impact: {sentiment_impact['impact']})")
-        
-        # Tambahkan info distribusi
-        if sentiment_result.get('total_articles', 0) > 0:
-            pos_count = sentiment_result.get('positive_count', 0)
-            neg_count = sentiment_result.get('negative_count', 0)
-            neu_count = sentiment_result.get('neutral_count', 0)
-            reasons.append(f"News distribution: {pos_count} positive, {neg_count} negative, {neu_count} neutral")
-        
-        # ========================================
-        # 3. Combine with dynamic weights
-        # ========================================
-        final_score = (tech_score_normalized * tech_weight) + (sentiment_score * sentiment_weight)
-        
-        # Determine action
-        if final_score > 0.2:
-            action = 'BUY'
-        elif final_score < -0.2:
-            action = 'SELL'
-        else:
-            action = 'HOLD'
-        
-        # Calculate confidence (0-100)
-        confidence = int(abs(final_score) * 100)
-        confidence = min(100, max(0, confidence))
-        
-        # Add summary reason
-        if action == 'BUY':
-            reasons.insert(0, f"Strong buy signal (score: {final_score:+.2f}, weights: tech={tech_weight:.0%}, sentiment={sentiment_weight:.0%})")
-        elif action == 'SELL':
-            reasons.insert(0, f"Strong sell signal (score: {final_score:+.2f}, weights: tech={tech_weight:.0%}, sentiment={sentiment_weight:.0%})")
-        else:
-            reasons.insert(0, f"Weak signal, hold recommended (score: {final_score:+.2f}, weights: tech={tech_weight:.0%}, sentiment={sentiment_weight:.0%})")
-        
-        return action, confidence, reasons
-    
-    def _calculate_risk_management(self, price: float, atr: float, action: str) -> Dict:
+
+        # Ambil alasan dari setiap indikator yang punya skor signifikan
+        for indicator_name in ["rsi", "macd", "ema", "bollinger", "volume"]:
+            data = interpretation.get(indicator_name, {})
+            score = data.get("score", 0)
+            if abs(score) >= 40:  # Hanya ambil yang signifikan
+                reasons.append(f"[{indicator_name.upper()}] {data['reason']}")
+
+        # Tambahkan alasan sentimen jika signifikan
+        if sentiment_analysis["total_articles"] > 0:
+            overall = sentiment_analysis["overall_label"]
+            pos = sentiment_analysis["positive_count"]
+            neg = sentiment_analysis["negative_count"]
+            total = sentiment_analysis["total_articles"]
+            reasons.append(
+                f"[SENTIMENT] {overall} → {pos} positif, {neg} negatif "
+                f"dari {total} artikel berita"
+            )
+
+        return reasons[:7]  # Maksimal 7 alasan agar tidak overwhelming
+
+    def _calculate_suggested_actions(
+        self, signal: str, price: float, atr: float, confidence: float
+    ) -> Dict:
         """
-        Calculate risk management parameters menggunakan ATR
-        
-        Args:
-            price: Current price
-            atr: Average True Range
-            action: BUY, SELL, or HOLD
-        
-        Returns:
-            Dictionary dengan risk management parameters
+        Menghitung suggested entry, stop-loss, dan take-profit
+        Menggunakan ATR untuk menentukan jarak SL/TP yang realistis
         """
-        if action == 'HOLD':
+        if signal == "NEUTRAL":
             return {
-                'stop_loss': 0.0,
-                'take_profit': 0.0,
-                'risk_reward_ratio': 0.0,
-                'position_size_percent': 0.0,
-                'atr': atr,
+                "action": "HOLD",
+                "reason": "Tidak ada sinyal kuat. Tunggu konfirmasi.",
+                "entry": None,
+                "stop_loss": None,
+                "take_profit": None,
+                "position_size_percent": 0,
             }
-        
-        # Gunakan ATR untuk stop-loss (2x ATR)
-        sl_result = self.technical.get_suggested_stop_loss(price, atr, 'long' if action == 'BUY' else 'short')
-        stop_loss = sl_result['stop_loss']
-        
-        # Take profit: 2.5x risk (risk/reward ratio 2.5:1)
-        risk_distance = abs(price - stop_loss)
-        reward_distance = risk_distance * 2.5
-        
-        if action == 'BUY':
-            take_profit = price + reward_distance
-        else:  # SELL
-            take_profit = price - reward_distance
-        
-        # Calculate risk/reward ratio
-        risk_reward_ratio = reward_distance / risk_distance if risk_distance > 0 else 0
-        
-        # Position size: 10% of portfolio (default)
-        position_size_percent = 10.0
-        
+
+        # Risk/Reward ratio target
+        rr_ratio = 2.0  # Target profit 2x jarak stop-loss
+
+        # Position sizing berdasarkan confidence
+        # Max 2% risiko per trade (aturan umum)
+        if confidence >= 75:
+            position_size_percent = 10  # 10% dari portfolio
+        elif confidence >= 60:
+            position_size_percent = 5
+        else:
+            position_size_percent = 2
+
+        # Hitung SL dan TP berdasarkan ATR
+        sl_distance = atr * 2  # 2x ATR untuk stop-loss
+        tp_distance = sl_distance * rr_ratio  # 2x jarak SL untuk TP
+
+        if signal in ["BUY", "STRONG_BUY"]:
+            entry = price
+            stop_loss = price - sl_distance
+            take_profit = price + tp_distance
+            action = "OPEN_LONG"
+        else:  # SELL, STRONG_SELL
+            entry = price
+            stop_loss = price + sl_distance
+            take_profit = price - tp_distance
+            action = "OPEN_SHORT"
+
         return {
-            'stop_loss': round(stop_loss, 2),
-            'take_profit': round(take_profit, 2),
-            'risk_reward_ratio': round(risk_reward_ratio, 2),
-            'position_size_percent': position_size_percent,
-            'atr': round(atr, 2),
-            'stop_loss_distance_percent': round(sl_result['distance_percent'], 2),
+            "action": action,
+            "entry": round(entry, 4),
+            "stop_loss": round(stop_loss, 4),
+            "take_profit": round(take_profit, 4),
+            "risk_reward_ratio": rr_ratio,
+            "position_size_percent": position_size_percent,
+            "max_risk_percent": 2.0,  # Max 2% dari portfolio
+            "sl_distance_percent": round((sl_distance / price) * 100, 2),
+            "tp_distance_percent": round((tp_distance / price) * 100, 2),
         }
-    
-    def _empty_signal(self, symbol: str, timeframe: str, error_msg: str = "") -> Dict:
-        """Return empty signal dictionary"""
-        return {
-            'symbol': symbol,
-            'timeframe': timeframe,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'action': 'HOLD',
-            'confidence': 0,
-            'price': 0.0,
-            'reasons': [f'Error generating signal: {error_msg}'] if error_msg else ['No signal generated'],
-            'technical': {},
-            'interpretation': {},
-            'sentiment': {
-                "overall_score": 0.0,
-                "overall_label": "NEUTRAL",
-                "positive_count": 0,
-                "negative_count": 0,
-                "neutral_count": 0,
-                "total_articles": 0,
-                "articles": [],
-            },
-            'sentiment_impact': {
-                "impact": "LOW",
-                "weight": 0.1,
-                "reason": "No data",
-            },
-            'risk_management': {
-                'stop_loss': 0.0,
-                'take_profit': 0.0,
-                'risk_reward_ratio': 0.0,
-                'position_size_percent': 0.0,
-                'atr': 0.0,
-                'stop_loss_distance_percent': 0.0,
-            },
-        }
+
+    def _generate_risk_warning(self, signal: str, confidence: float) -> str:
+        """Generate peringatan risiko berdasarkan kondisi"""
+        warnings = []
+
+        if confidence < 60:
+            warnings.append("Confidence rendah → pertimbangkan untuk tidak entry")
+
+        if signal in ["STRONG_BUY", "STRONG_SELL"]:
+            warnings.append(
+                "Sinyal sangat kuat → pastikan bukan fake breakout/pump & dump"
+            )
+
+        warnings.append(
+            "⚠️  Ini adalah analisis otomatis, BUKAN saran keuangan. "
+            "Selalu lakukan riset mandiri (DYOR)."
+        )
+
+        return " | ".join(warnings)
