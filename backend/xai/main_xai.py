@@ -31,35 +31,47 @@ async def demo_explanation_generator():
     logger.info("📝 DEMO: Explanation Generator")
     logger.info("="*70)
     
-    # Sample signal (mock data)
+    # Sample signal (mock data) - struktur sesuai dengan SignalGenerator output
     sample_signal = {
         "symbol": "BTC/USDT",
         "signal": "STRONG_BUY",
         "confidence": 85.5,
         "final_score": 78.45,
-        "interpretation": {
+        "latest_price": 67234.50,
+        "technical_score": 71.50,
+        "sentiment_score": 0.45,
+        "sentiment_label": "POSITIVE",
+        "component_scores": {
             "rsi": {
-                "signal": "OVERSOLD",
                 "score": 80,
-                "reason": "RSI 28.5 < 30 → potensi rebound"
+                "signal": "OVERSOLD",
+                "weight": 0.15
             },
             "macd": {
-                "signal": "BULLISH_CROSSOVER",
                 "score": 90,
-                "reason": "MACD histogram baru crossover ke positif → sinyal beli kuat"
+                "signal": "BULLISH_CROSSOVER",
+                "weight": 0.25
             },
             "ema": {
-                "signal": "STRONG_UPTREND",
                 "score": 85,
-                "reason": "Harga > EMA20 > EMA50 > EMA200 → uptrend kuat"
+                "signal": "STRONG_UPTREND",
+                "weight": 0.25
+            },
+            "bollinger": {
+                "score": 70,
+                "signal": "OVERSOLD",
+                "weight": 0.15
+            },
+            "volume": {
+                "score": 30,
+                "signal": "HIGH",
+                "weight": 0.10
+            },
+            "sentiment": {
+                "score": 0.45,
+                "label": "POSITIVE",
+                "weight": 0.10
             }
-        },
-        "sentiment": {
-            "overall_score": 0.45,
-            "overall_label": "POSITIVE",
-            "positive_count": 12,
-            "negative_count": 3,
-            "total_articles": 20
         },
         "suggested_actions": {
             "action": "OPEN_LONG",
@@ -67,7 +79,10 @@ async def demo_explanation_generator():
             "stop_loss": 65834.50,
             "take_profit": 70034.50,
             "position_size_percent": 10.0,
-            "risk_reward_ratio": 2.0
+            "risk_reward_ratio": 2.0,
+            "sl_distance_percent": 2.08,
+            "tp_distance_percent": 4.16,
+            "confidence": 85.5
         },
         "reasons": [
             "[RSI] RSI 28.5 < 30 → potensi rebound",
@@ -77,15 +92,15 @@ async def demo_explanation_generator():
         ]
     }
     
-    # Generate explanation
+    # Generate full explanation
     generator = ExplanationGenerator()
-    explanation = generator.generate_explanation(sample_signal)
+    explanation = generator.generate_trade_explanation(sample_signal)
     
     print(explanation)
     
-    # Simple explanation
-    simple = generator.generate_simple_explanation(sample_signal)
-    logger.info(f"\n💡 Penjelasan Sederhana:\n{simple}")
+    # Quick summary
+    summary = generator.generate_quick_summary(sample_signal)
+    logger.info(f"\n💡 Ringkasan Cepat:\n{summary}")
 
 
 async def demo_trading_dictionary():
