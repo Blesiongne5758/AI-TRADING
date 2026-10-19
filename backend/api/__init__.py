@@ -1,5 +1,6 @@
 """
-FastAPI Backend - AI Trading Agent
+API Module
+FastAPI endpoints untuk AI Trading Agent
 """
 from .main import app
 
