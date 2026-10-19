@@ -31,7 +31,7 @@ from data_collector.config import (
     NEWS_FETCH_INTERVAL,
     SENTIMENT_MODEL,
 )
-from data_collector.database import save_news_data
+from data_collector.database import DatabaseManager
 
 
 class SentimentAnalyzer:
@@ -222,16 +222,18 @@ class NewsScraper:
         running: Boolean flag untuk kontrol loop
     """
     
-    def __init__(self, sources: Optional[List[str]] = None):
+    def __init__(self, sources: Optional[List[str]] = None, db: Optional[DatabaseManager] = None):
         """
         Initialize NewsScraper.
         
         Args:
             sources: List of RSS feed URLs. Default dari config.
+            db: DatabaseManager instance. Default akan dibuat baru.
         """
         # Extract URLs dari NEWS_FEEDS (list of dicts)
         default_urls = [feed["url"] for feed in NEWS_FEEDS]
         self.sources = sources or default_urls
+        self.db = db or DatabaseManager()
         self.analyzer = SentimentAnalyzer()
         self.running = False
         
@@ -418,30 +420,26 @@ class NewsScraper:
         Returns:
             Number of news saved
         """
-        saved_count = 0
-        
+        # Convert news_items ke format yang dibutuhkan DatabaseManager
+        db_news_items = []
         for news in news_items:
-            try:
-                success = await save_news_data(
-                    title=news['title'],
-                    source=news['source'],
-                    url=news['url'],
-                    published_at=news['published_at'],
-                    summary=news.get('summary'),
-                    sentiment_score=news.get('sentiment_score'),
-                    sentiment_label=news.get('sentiment_label')
-                )
-                
-                if success:
-                    saved_count += 1
-                    
-            except Exception as e:
-                logger.error(f"Failed to save news: {e}")
-                continue
+            db_news_items.append({
+                "source": news['source'],
+                "title": news['title'],
+                "link": news['url'],
+                "published_date": int(news['published_at'].timestamp()) if isinstance(news['published_at'], datetime) else news['published_at'],
+                "summary": news.get('summary'),
+                "category": news.get('category', 'crypto'),
+            })
         
-        self.news_saved += saved_count
-        logger.info(f"Saved {saved_count} news to database")
-        return saved_count
+        try:
+            saved_count = await self.db.save_news(db_news_items)
+            self.news_saved += saved_count
+            logger.info(f"Saved {saved_count} news to database")
+            return saved_count
+        except Exception as e:
+            logger.error(f"Failed to save news: {e}")
+            return 0
     
     async def run_once(self) -> Dict[str, Any]:
         """

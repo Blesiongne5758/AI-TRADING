@@ -162,8 +162,7 @@ pip install -r requirements.txt
 - `pandas` - Data processing
 - `numpy` - Numerical computing
 - `feedparser` - RSS feed parser
-- `aiosqlite` - Async SQLite
-- `sqlalchemy` - Database ORM
+- `aiosqlite` - Async SQLite (database)
 - `python-dotenv` - Environment variables
 - `loguru` - Logging
 

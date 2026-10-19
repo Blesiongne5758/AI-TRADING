@@ -35,7 +35,7 @@ from data_collector.config import (
     TIMEFRAMES,
     HISTORICAL_CANDLE_LIMIT,
 )
-from data_collector.database import save_ohlcv_data
+from data_collector.database import DatabaseManager
 
 
 class BinanceDataCollector:
@@ -58,7 +58,8 @@ class BinanceDataCollector:
     def __init__(
         self,
         symbols: Optional[List[str]] = None,
-        timeframes: Optional[List[str]] = None
+        timeframes: Optional[List[str]] = None,
+        db: Optional[DatabaseManager] = None
     ):
         """
         Initialize BinanceDataCollector.
@@ -66,9 +67,11 @@ class BinanceDataCollector:
         Args:
             symbols: List of trading pairs. Default dari config.
             timeframes: List of time intervals. Default dari config.
+            db: DatabaseManager instance. Default akan dibuat baru.
         """
         self.symbols = symbols or TRADING_SYMBOLS
         self.timeframes = timeframes or TIMEFRAMES
+        self.db = db or DatabaseManager()
         self.running = False
         self.exchange: Optional[ccxt.binance] = None
         
@@ -244,7 +247,7 @@ class BinanceDataCollector:
                         }]
                         
                         # Save to database
-                        await save_ohlcv_data(symbol, timeframe, candle_data)
+                        await self.db.save_candles(symbol, timeframe, candle_data)
                         
                         # Update statistics
                         self.messages_received += 1
@@ -370,7 +373,7 @@ async def main():
                     timeframe=timeframe,
                     limit=100
                 )
-                await save_ohlcv_data(symbol, timeframe, data)
+                await collector.db.save_candles(symbol, timeframe, data)
                 logger.info(f"Saved {len(data)} historical candles for {symbol} {timeframe}")
         
         # Start real-time collection

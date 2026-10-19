@@ -31,7 +31,7 @@ from data_collector.config import (
     print_config,
     validate_config,
 )
-from data_collector.database import init_db, close_db
+from data_collector.database import DatabaseManager
 from data_collector.binance_ws import BinanceDataCollector
 from data_collector.news_scraper import NewsScraper
 
@@ -52,6 +52,7 @@ class CollectorManager:
     
     def __init__(self):
         """Initialize collector manager."""
+        self.db = DatabaseManager()
         self.binance_collector: BinanceDataCollector = None
         self.news_scraper: NewsScraper = None
         self.running = False
@@ -70,16 +71,16 @@ class CollectorManager:
         try:
             # Initialize database
             logger.info("Initializing database...")
-            await init_db()
+            await self.db.initialize()
             
             # Initialize Binance collector
             logger.info("Initializing Binance data collector...")
-            self.binance_collector = BinanceDataCollector()
+            self.binance_collector = BinanceDataCollector(db=self.db)
             await self.binance_collector.initialize()
             
             # Initialize news scraper
             logger.info("Initializing news scraper...")
-            self.news_scraper = NewsScraper()
+            self.news_scraper = NewsScraper(db=self.db)
             await self.news_scraper.initialize()
             
             logger.info("All collectors initialized successfully")
@@ -109,10 +110,9 @@ class CollectorManager:
                         )
                         
                         # Save to database
-                        from data_collector.database import save_ohlcv_data
-                        saved = await save_ohlcv_data(symbol, timeframe, data)
+                        await self.db.save_candles(symbol, timeframe, data)
                         
-                        logger.info(f"Fetched {saved} candles for {symbol} {timeframe}")
+                        logger.info(f"Fetched {len(data)} candles for {symbol} {timeframe}")
                         
                         # Small delay to avoid rate limiting
                         await asyncio.sleep(1)
