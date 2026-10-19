@@ -723,6 +723,79 @@ class DatabaseManager:
             )
             await db.commit()
 
+    async def get_portfolio_stats(self) -> Dict:
+        """
+        Mengambil statistik portfolio untuk dashboard
+        
+        Returns:
+            Dictionary dengan statistik:
+                - total_pnl: Total realized P&L
+                - total_trades: Total trade yang sudah close
+                - wins: Jumlah trade profit
+                - losses: Jumlah trade loss
+                - win_rate: Win rate (%)
+                - avg_win: Average profit per winning trade
+                - avg_loss: Average loss per losing trade
+                - profit_factor: Profit factor (avg_win / avg_loss)
+                - max_loss: Maximum loss single trade
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            
+            # Total realized PnL
+            cursor = await db.execute(
+                "SELECT SUM(pnl) as total_pnl, COUNT(*) as total_trades FROM positions WHERE status = 'CLOSED'"
+            )
+            row = await cursor.fetchone()
+            total_pnl = row["total_pnl"] or 0
+            total_trades = row["total_trades"] or 0
+            
+            # Win rate
+            cursor = await db.execute(
+                "SELECT COUNT(*) as wins FROM positions WHERE status = 'CLOSED' AND pnl > 0"
+            )
+            row = await cursor.fetchone()
+            wins = row["wins"] or 0
+            win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+            
+            # Average win/loss
+            cursor = await db.execute(
+                """
+                SELECT 
+                    AVG(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) as avg_win,
+                    AVG(CASE WHEN pnl < 0 THEN pnl ELSE 0 END) as avg_loss
+                FROM positions 
+                WHERE status = 'CLOSED'
+                """
+            )
+            row = await cursor.fetchone()
+            avg_win = row["avg_win"] or 0
+            avg_loss = abs(row["avg_loss"] or 0)
+            profit_factor = (avg_win / avg_loss) if avg_loss > 0 else 0
+            
+            # Max drawdown
+            cursor = await db.execute(
+                """
+                SELECT MIN(pnl) as max_loss 
+                FROM positions 
+                WHERE status = 'CLOSED' AND pnl < 0
+                """
+            )
+            row = await cursor.fetchone()
+            max_loss = row["max_loss"] or 0
+            
+            return {
+                "total_pnl": total_pnl,
+                "total_trades": total_trades,
+                "wins": wins,
+                "losses": total_trades - wins,
+                "win_rate": win_rate,
+                "avg_win": avg_win,
+                "avg_loss": avg_loss,
+                "profit_factor": profit_factor,
+                "max_loss": max_loss,
+            }
+
 
 # ============================================
 # STANDALONE TESTING

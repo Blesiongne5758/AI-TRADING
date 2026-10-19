@@ -236,10 +236,10 @@ class PortfolioManager:
 
     async def get_portfolio_summary(self) -> Dict:
         """
-        Get ringkasan portfolio
+        Get ringkasan portfolio lengkap dengan statistik
         
         Returns:
-            Dict dengan summary data
+            Dict dengan summary data dan statistik trading
         """
         # Calculate unrealized P&L
         unrealized_pnl = 0.0
@@ -253,27 +253,13 @@ class PortfolioManager:
                 else:
                     unrealized_pnl += (position['entry_price'] - current_price) * position['quantity']
         
-        # Calculate total P&L from closed trades
-        realized_pnl = 0.0
-        closed_trades = []
-        for t in self.trade_history:
-            if t.get('action') in ['CLOSE', 'STOP_LOSS', 'TAKE_PROFIT']:
-                closed_trades.append(t)
-                # Calculate P&L from notes if available
-                notes = t.get('notes', '')
-                if 'P&L: $' in notes:
-                    try:
-                        pnl_str = notes.split('P&L: $')[1].split(' ')[0].replace('+', '').replace(',', '')
-                        realized_pnl += float(pnl_str)
-                    except:
-                        pass
+        # Get portfolio stats from database
+        stats = await self.db.get_portfolio_stats()
         
+        # Calculate totals
+        realized_pnl = stats['total_pnl']
         total_pnl = realized_pnl + unrealized_pnl
         total_pnl_percent = (total_pnl / self.initial_balance) * 100
-        
-        # Calculate win rate
-        winning_trades = [t for t in closed_trades if 'P&L: $+' in t.get('notes', '')]
-        win_rate = (len(winning_trades) / len(closed_trades) * 100) if closed_trades else 0
         
         return {
             "initial_balance": self.initial_balance,
@@ -284,9 +270,14 @@ class PortfolioManager:
             "total_pnl": total_pnl,
             "total_pnl_percent": total_pnl_percent,
             "open_positions": len(self.positions),
-            "total_trades": len(closed_trades),
-            "winning_trades": len(winning_trades),
-            "win_rate": win_rate,
+            "total_trades": stats['total_trades'],
+            "winning_trades": stats['wins'],
+            "losing_trades": stats['losses'],
+            "win_rate": stats['win_rate'],
+            "avg_win": stats['avg_win'],
+            "avg_loss": stats['avg_loss'],
+            "profit_factor": stats['profit_factor'],
+            "max_loss": stats['max_loss'],
             "positions": list(self.positions.values())
         }
 
@@ -306,28 +297,57 @@ class PortfolioManager:
         logger.debug(f"📸 Portfolio snapshot saved: ${snapshot['total_balance']:,.2f}")
 
     async def print_portfolio_summary(self):
-        """Print ringkasan portfolio ke console"""
+        """Print ringkasan portfolio ke console dengan statistik lengkap"""
         summary = await self.get_portfolio_summary()
         
         logger.info("\n" + "="*70)
         logger.info("💼 PORTFOLIO SUMMARY")
         logger.info("="*70)
+        
+        # Balance Info
+        logger.info("\n💰 BALANCE:")
         logger.info(f"   Initial Balance: ${summary['initial_balance']:,.2f}")
         logger.info(f"   Current Balance: ${summary['current_balance']:,.2f}")
         logger.info(f"   Available Balance: ${summary['available_balance']:,.2f}")
+        
+        # P&L Info
+        logger.info("\n📈 PROFIT & LOSS:")
         logger.info(f"   Unrealized P&L: ${summary['unrealized_pnl']:+,.2f}")
         logger.info(f"   Realized P&L: ${summary['realized_pnl']:+,.2f}")
         logger.info(f"   Total P&L: ${summary['total_pnl']:+,.2f} ({summary['total_pnl_percent']:+.2f}%)")
-        logger.info(f"   Open Positions: {summary['open_positions']}")
+        
+        # Trading Stats
+        logger.info("\n📊 TRADING STATISTICS:")
         logger.info(f"   Total Trades: {summary['total_trades']}")
+        logger.info(f"   Winning Trades: {summary['winning_trades']}")
+        logger.info(f"   Losing Trades: {summary['losing_trades']}")
         logger.info(f"   Win Rate: {summary['win_rate']:.1f}%")
+        logger.info(f"   Average Win: ${summary['avg_win']:,.2f}")
+        logger.info(f"   Average Loss: ${summary['avg_loss']:,.2f}")
+        logger.info(f"   Profit Factor: {summary['profit_factor']:.2f}")
+        logger.info(f"   Max Loss: ${summary['max_loss']:,.2f}")
         
+        # Open Positions
+        logger.info(f"\n📂 OPEN POSITIONS: {summary['open_positions']}")
         if summary['positions']:
-            logger.info("\n📊 Open Positions:")
             for pos in summary['positions']:
-                logger.info(
-                    f"   • {pos['symbol']} {pos['side']} @ ${pos['entry_price']:,.2f} "
-                    f"(Qty: {pos['quantity']:.6f})"
-                )
+                # Calculate current P&L for this position
+                ticker = await self.db.get_latest_ticker(pos['symbol'])
+                if ticker:
+                    current_price = ticker['price']
+                    if pos['side'] == 'LONG':
+                        pos_pnl = (current_price - pos['entry_price']) * pos['quantity']
+                    else:
+                        pos_pnl = (pos['entry_price'] - current_price) * pos['quantity']
+                    
+                    pnl_percent = (pos_pnl / (pos['entry_price'] * pos['quantity'])) * 100
+                    emoji = "🟢" if pos_pnl >= 0 else "🔴"
+                    
+                    logger.info(
+                        f"   {emoji} {pos['symbol']} {pos['side']} @ ${pos['entry_price']:,.2f} "
+                        f"(Qty: {pos['quantity']:.6f}) | P&L: ${pos_pnl:+,.2f} ({pnl_percent:+.2f}%)"
+                    )
+        else:
+            logger.info("   (No open positions)")
         
-        logger.info("="*70 + "\n")
+        logger.info("\n" + "="*70 + "\n")
