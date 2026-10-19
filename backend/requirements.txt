@@ -48,6 +48,13 @@ python-dotenv==1.0.0
 loguru==0.7.2
 
 # ============================================
+# FastAPI (Backend API)
+# ============================================
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+websockets==12.0
+
+# ============================================
 # XAI & Chat Agent (MVP - ringan)
 # ============================================
 # Tidak perlu dependency berat untuk pattern matching
