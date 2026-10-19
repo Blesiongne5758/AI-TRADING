@@ -1,9 +1,9 @@
 """
 Paper Trading Engine Module
-Eksekusi trading virtual berdasarkan analysis signals
+Simulasi trading dengan uang virtual untuk edukasi dan testing
 """
 from .portfolio_manager import PortfolioManager
-from .order_executor import OrderExecutor
 from .risk_manager import RiskManager
+from .order_executor import OrderExecutor
 
-__all__ = ["PortfolioManager", "OrderExecutor", "RiskManager"]
+__all__ = ["PortfolioManager", "RiskManager", "OrderExecutor"]
