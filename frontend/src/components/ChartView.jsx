@@ -1,19 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import { createChart } from 'lightweight-charts';
-import { useMarketCandles } from '../hooks';
 
-export default function ChartView({ symbol = 'BTC/USDT', timeframe = '1h' }) {
+export default function ChartView() {
+  const [symbol, setSymbol] = useState('BTC/USDT');
+  const [timeframe, setTimeframe] = useState('1h');
+  const [candles, setCandles] = useState([]);
+  const [signal, setSignal] = useState(null);
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
-  const [selectedTimeframe, setSelectedTimeframe] = useState(timeframe);
-  
-  const { candles, loading, error } = useMarketCandles(symbol, selectedTimeframe, 200);
+
+  const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'];
+  const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
+
+  useEffect(() => {
+    fetchData();
+  }, [symbol, timeframe]);
 
   useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
     // Create chart
     const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: 500,
       layout: {
         background: { color: '#1e293b' },
         textColor: '#e2e8f0',
@@ -22,108 +32,114 @@ export default function ChartView({ symbol = 'BTC/USDT', timeframe = '1h' }) {
         vertLines: { color: '#334155' },
         horzLines: { color: '#334155' },
       },
-      width: chartContainerRef.current.clientWidth,
-      height: 500,
+      timeScale: {
+        borderColor: '#475569',
+      },
+      rightPriceScale: {
+        borderColor: '#475569',
+      },
     });
 
     // Add candlestick series
-    const candlestickSeries = chart.addCandlestickSeries({
+    const candleSeries = chart.addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
-      borderUpColor: '#10b981',
       borderDownColor: '#ef4444',
-      wickUpColor: '#10b981',
+      borderUpColor: '#10b981',
       wickDownColor: '#ef4444',
+      wickUpColor: '#10b981',
     });
 
-    // Set data
-    const chartData = candles.map(candle => ({
-      time: candle.timestamp / 1000,
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
+    // Format data
+    const chartData = candles.map(c => ({
+      time: c.timestamp / 1000,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
     }));
 
-    candlestickSeries.setData(chartData);
+    candleSeries.setData(chartData);
 
-    // Add volume histogram
-    const volumeSeries = chart.addHistogramSeries({
-      color: '#6366f1',
-      priceFormat: {
-        type: 'volume',
-      },
-      priceScaleId: '',
-    });
+    // Add markers untuk sinyal
+    if (signal) {
+      const markers = [];
+      
+      if (signal.signal === 'BUY' || signal.signal === 'STRONG_BUY') {
+        markers.push({
+          time: chartData[chartData.length - 1].time,
+          position: 'belowBar',
+          color: '#10b981',
+          shape: 'arrowUp',
+          text: 'BUY',
+        });
+      } else if (signal.signal === 'SELL' || signal.signal === 'STRONG_SELL') {
+        markers.push({
+          time: chartData[chartData.length - 1].time,
+          position: 'aboveBar',
+          color: '#ef4444',
+          shape: 'arrowDown',
+          text: 'SELL',
+        });
+      }
 
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-    });
+      candleSeries.setMarkers(markers);
+    }
 
-    const volumeData = candles.map(candle => ({
-      time: candle.timestamp / 1000,
-      value: candle.volume,
-      color: candle.close >= candle.open ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)',
-    }));
-
-    volumeSeries.setData(volumeData);
-
-    // Fit content
     chart.timeScale().fitContent();
-
-    // Store chart reference
     chartRef.current = chart;
 
     // Handle resize
     const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
-      }
+      chart.applyOptions({ width: chartContainerRef.current.clientWidth });
     };
-
     window.addEventListener('resize', handleResize);
 
-    // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [candles]);
+  }, [candles, signal]);
 
-  const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-white">Loading chart...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-red-500">Error: {error}</div>
-      </div>
-    );
-  }
+  const fetchData = async () => {
+    try {
+      const [candlesRes, signalRes] = await Promise.all([
+        axios.get(`http://localhost:8000/api/market/candles/${symbol}?timeframe=${timeframe}&limit=100`),
+        axios.get(`http://localhost:8000/api/signals/analyze/${symbol}?timeframe=${timeframe}`),
+      ]);
+      
+      setCandles(candlesRes.data.candles);
+      setSignal(signalRes.data.signal);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
+  };
 
   return (
-    <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-white">{symbol} Chart</h2>
+    <div className="p-8">
+      <h1 className="text-3xl font-bold text-white mb-8">Chart Analysis</h1>
+
+      {/* Controls */}
+      <div className="flex gap-4 mb-6">
+        <select
+          value={symbol}
+          onChange={(e) => setSymbol(e.target.value)}
+          className="bg-slate-800 text-white px-4 py-2 rounded-lg border border-slate-700"
+        >
+          {symbols.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+
         <div className="flex gap-2">
           {timeframes.map(tf => (
             <button
               key={tf}
-              onClick={() => setSelectedTimeframe(tf)}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                selectedTimeframe === tf
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-slate-900 text-slate-400 hover:bg-slate-700'
+              onClick={() => setTimeframe(tf)}
+              className={`px-4 py-2 rounded-lg ${
+                timeframe === tf
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
               {tf}
@@ -131,7 +147,25 @@ export default function ChartView({ symbol = 'BTC/USDT', timeframe = '1h' }) {
           ))}
         </div>
       </div>
-      <div ref={chartContainerRef} className="w-full" />
+
+      {/* Signal Info */}
+      {signal && (
+        <div className="bg-slate-800 rounded-lg p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-bold text-white">{signal.signal}</h3>
+              <p className="text-slate-400">Confidence: {signal.confidence.toFixed(1)}%</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-white">${signal.latest_price.toFixed(2)}</p>
+              <p className="text-slate-400">Score: {signal.final_score.toFixed(2)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chart */}
+      <div ref={chartContainerRef} className="bg-slate-800 rounded-lg" />
     </div>
   );
 }
