@@ -22,7 +22,7 @@ Cara penggunaan:
 """
 
 from data_collector.binance_ws import BinanceCollector
-from data_collector.news_scraper import NewsScraper, SentimentAnalyzer
+from data_collector.news_scraper import NewsScraper
 from data_collector.config import (
     TRADING_SYMBOLS,
     TIMEFRAMES,
@@ -39,7 +39,6 @@ __version__ = "1.0.0"
 __all__ = [
     'BinanceCollector',
     'NewsScraper',
-    'SentimentAnalyzer',
     'DatabaseManager',
     'TRADING_SYMBOLS',
     'TIMEFRAMES',

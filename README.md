@@ -22,7 +22,7 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 
 - [x] **Koneksi ke Binance REST API** - Data harga historis + real-time dari 5 simbol (BTC, ETH, SOL, BNB, XRP)
 - [x] **6 Timeframes** - 1m, 5m, 15m, 1h, 4h, 1d
-- [x] **Analisis Sentimen** - FinBERT AI untuk analisis berita dari 3 sumber
+- [x] **News Scraping** - Mengambil berita crypto dari 3 sumber RSS feeds
 - [x] **Database SQLite** - Penyimpanan data OHLCV, ticker, dan berita
 - [x] **Auto-reconnect** - Koneksi otomatis jika terputus
 - [x] **Logging** - Comprehensive logging untuk debugging
@@ -405,43 +405,33 @@ data = await get_ohlcv_data("BTC/USDT", "1h", limit=100)
 
 ---
 
-### 4. `news_scraper.py` - News Scraper & Sentiment
+### 4. `news_scraper.py` - News Scraper
 
-**Fungsi:** Mengambil berita crypto dan menganalisis sentimen
+**Fungsi:** Mengambil berita crypto dari RSS feeds
 
 **Cara kerja:**
-1. Fetch RSS feeds dari CoinDesk, CoinTelegraph, dll
-2. Parse berita (title, summary, date)
-3. Analisis sentimen dengan FinBERT AI
-4. Simpan ke database dengan sentiment score
+1. Fetch RSS feeds dari CoinDesk, CoinTelegraph, Decrypt
+2. Parse berita (title, summary, link, published_date)
+3. Simpan ke database (dengan deduplication)
+4. Loop setiap 15 menit
 
-**Sentiment Score:**
-- `+1.0` = Sangat bullish (positif untuk harga)
-- `0.0` = Netral
-- `-1.0` = Sangat bearish (negatif untuk harga)
-
-**Contoh:**
+**Contoh data yang dikumpulkan:**
 ```python
-# Berita: "Bitcoin reaches new all-time high"
 {
+    "source": "CoinDesk",
     "title": "Bitcoin reaches new all-time high",
-    "sentiment_score": 0.85,
-    "sentiment_label": "bullish"
-}
-
-# Berita: "SEC bans cryptocurrency trading"
-{
-    "title": "SEC bans cryptocurrency trading",
-    "sentiment_score": -0.92,
-    "sentiment_label": "bearish"
+    "link": "https://coindesk.com/...",
+    "published_date": 1642684522000,
+    "summary": "Bitcoin price surged to new heights today...",
+    "category": "crypto"
 }
 ```
 
 **Untuk pemula:**
-- FinBERT adalah AI yang dilatih khusus untuk financial text
-- Sentimen berita mempengaruhi keputusan trading bot
-- Berita positif → bot lebih cenderung BUY
-- Berita negatif → bot lebih cenderung SELL
+- RSS = format untuk distribute berita
+- feedparser = library untuk parse RSS feeds
+- Berita disimpan ke database untuk analisis sentimen di Fase 2
+- Deduplication otomatis (berita dengan link sama tidak akan di-save 2x)
 
 ---
 
@@ -592,7 +582,7 @@ pip install -r requirements.txt
 
 1. **Analysis Engine**
    - Technical indicators (RSI, MACD, EMA, Bollinger Bands)
-   - Sentiment aggregation
+   - Sentiment analysis dengan FinBERT AI
    - Signal generation
 
 2. **Paper Trading Engine**

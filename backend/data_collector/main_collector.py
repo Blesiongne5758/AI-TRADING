@@ -81,7 +81,6 @@ class CollectorManager:
             # Initialize news scraper
             logger.info("Initializing news scraper...")
             self.news_scraper = NewsScraper(db=self.db)
-            await self.news_scraper.initialize()
             
             logger.info("All collectors initialized successfully")
             

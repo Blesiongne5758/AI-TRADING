@@ -17,7 +17,7 @@ numpy==1.26.2
 
 # ============================================
 # Sentiment Analysis (untuk Fase 2, install nanti)
-# ============================================
+# Uncomment baris berikut saat ready untuk Fase 2:
 # transformers==4.36.2
 # torch==2.1.2
 
