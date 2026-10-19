@@ -23,24 +23,24 @@ class SignalGenerator:
     
     Contoh penggunaan:
         generator = SignalGenerator()
-        signal = generator.generate(candles_list, news_texts)
+        signal = generator.generate(candles_list, news_items)
         print(signal['action'])  # 'BUY'
         print(signal['confidence'])  # 75
         print(signal['reasons'])  # ['RSI oversold', 'MACD bullish', ...]
     """
     
-    def __init__(self, use_ml_sentiment: bool = False):
+    def __init__(self, use_finbert: bool = False):
         """
         Initialize signal generator
         
         Args:
-            use_ml_sentiment: Gunakan ML untuk sentiment analysis
+            use_finbert: Gunakan FinBERT untuk sentiment analysis (lebih akurat, butuh ~500MB)
         """
         self.technical = TechnicalAnalyzer()
-        self.sentiment = SentimentAnalyzer(use_ml=use_ml_sentiment)
+        self.sentiment = SentimentAnalyzer(use_finbert=use_finbert)
     
     def generate(self, candles: List[Dict], 
-                 news_texts: Optional[List[str]] = None,
+                 news_items: Optional[List[Dict]] = None,
                  symbol: str = "UNKNOWN",
                  timeframe: str = "UNKNOWN") -> Dict:
         """
@@ -48,36 +48,13 @@ class SignalGenerator:
         
         Args:
             candles: List of OHLCV dictionaries dari database
-            news_texts: List of news texts (optional)
+            news_items: List of news dictionaries dengan format:
+                       [{"title": str, "summary": str, "source": str, "link": str}, ...]
             symbol: Trading pair (e.g., "BTC/USDT")
             timeframe: Timeframe (e.g., "1h")
         
         Returns:
             Dictionary dengan signal details
-        
-        Example:
-            {
-                'symbol': 'BTC/USDT',
-                'timeframe': '1h',
-                'timestamp': '2024-01-15 10:00:00',
-                'action': 'BUY',
-                'confidence': 75,
-                'price': 42500.0,
-                'reasons': [
-                    'RSI oversold (28)',
-                    'MACD bullish crossover',
-                    'EMA alignment bullish',
-                    'News sentiment bullish (+0.65)'
-                ],
-                'technical': {...},
-                'interpretation': {...},
-                'sentiment': {...},
-                'risk_management': {
-                    'stop_loss': 41500.0,
-                    'take_profit': 44500.0,
-                    'risk_reward_ratio': 2.0
-                }
-            }
         """
         try:
             # 1. Calculate technical indicators dengan interpretasi
@@ -88,14 +65,30 @@ class SignalGenerator:
                 return self._empty_signal(symbol, timeframe, "Data tidak cukup (butuh 200+ candles)")
             
             # 2. Analyze sentiment (if news provided)
-            if news_texts and len(news_texts) > 0:
-                sentiment = self.sentiment.analyze_multiple(news_texts)
+            if news_items and len(news_items) > 0:
+                sentiment_result = self.sentiment.analyze_news_batch(news_items)
+                sentiment_impact = self.sentiment.get_sentiment_impact(sentiment_result['overall_score'])
             else:
-                sentiment = self.sentiment._neutral_sentiment()
+                sentiment_result = {
+                    "overall_score": 0.0,
+                    "overall_label": "NEUTRAL",
+                    "positive_count": 0,
+                    "negative_count": 0,
+                    "neutral_count": 0,
+                    "total_articles": 0,
+                    "articles": [],
+                }
+                sentiment_impact = {
+                    "impact": "LOW",
+                    "weight": 0.1,
+                    "reason": "Tidak ada berita untuk dianalisis",
+                }
             
             # 3. Generate final signal dari interpretation scores
             action, confidence, reasons = self._combine_signals(
-                technical_result['interpretation'], sentiment
+                technical_result['interpretation'], 
+                sentiment_result,
+                sentiment_impact
             )
             
             # 4. Calculate risk management dengan ATR
@@ -116,7 +109,8 @@ class SignalGenerator:
                 'reasons': reasons,
                 'technical': technical_result['indicators'],
                 'interpretation': technical_result['interpretation'],
-                'sentiment': sentiment,
+                'sentiment': sentiment_result,
+                'sentiment_impact': sentiment_impact,
                 'risk_management': risk_management,
             }
             
@@ -131,17 +125,18 @@ class SignalGenerator:
             logger.error(f"Error generating signal: {e}")
             return self._empty_signal(symbol, timeframe, str(e))
     
-    def _combine_signals(self, interpretation: Dict, sentiment: Dict) -> tuple:
+    def _combine_signals(self, interpretation: Dict, sentiment_result: Dict, sentiment_impact: Dict) -> tuple:
         """
         Gabungkan interpretation scores dan sentiment menjadi signal final
         
         Menggunakan weighted scoring:
-        - Technical interpretation: 70% weight
-        - Sentiment analysis: 30% weight
+        - Technical interpretation: 70% weight (default)
+        - Sentiment analysis: 30% weight (default, bisa di-adjust berdasarkan impact)
         
         Args:
             interpretation: Dict dengan scores per indikator (-100 to +100)
-            sentiment: Sentiment analysis dict
+            sentiment_result: Sentiment analysis result dari analyze_news_batch
+            sentiment_impact: Impact analysis dari get_sentiment_impact
         
         Returns:
             Tuple (action, confidence, reasons)
@@ -149,7 +144,7 @@ class SignalGenerator:
         reasons = []
         
         # ========================================
-        # 1. Technical Analysis (70% weight)
+        # 1. Technical Analysis (70% weight default)
         # ========================================
         tech_scores = []
         
@@ -175,21 +170,31 @@ class SignalGenerator:
         tech_score_normalized = avg_tech_score / 100
         
         # ========================================
-        # 2. Sentiment Analysis (30% weight)
+        # 2. Sentiment Analysis (dynamic weight berdasarkan impact)
         # ========================================
-        sentiment_score = sentiment.get('score', 0)
-        sentiment_label = sentiment.get('label', 'NEUTRAL')
+        sentiment_score = sentiment_result.get('overall_score', 0)
+        sentiment_label = sentiment_result.get('overall_label', 'NEUTRAL')
+        sentiment_weight = sentiment_impact.get('weight', 0.3)
         
-        if sentiment_label == 'BULLISH':
-            reasons.append(f"News sentiment bullish ({sentiment_score:+.2f})")
-        elif sentiment_label == 'BEARISH':
-            reasons.append(f"News sentiment bearish ({sentiment_score:+.2f})")
+        # Adjust technical weight berdasarkan sentiment weight
+        tech_weight = 1.0 - sentiment_weight
+        
+        if sentiment_label == 'POSITIVE':
+            reasons.append(f"News sentiment positive ({sentiment_score:+.2f}, impact: {sentiment_impact['impact']})")
+        elif sentiment_label == 'NEGATIVE':
+            reasons.append(f"News sentiment negative ({sentiment_score:+.2f}, impact: {sentiment_impact['impact']})")
+        
+        # Tambahkan info distribusi
+        if sentiment_result.get('total_articles', 0) > 0:
+            pos_count = sentiment_result.get('positive_count', 0)
+            neg_count = sentiment_result.get('negative_count', 0)
+            neu_count = sentiment_result.get('neutral_count', 0)
+            reasons.append(f"News distribution: {pos_count} positive, {neg_count} negative, {neu_count} neutral")
         
         # ========================================
-        # 3. Combine with weights
+        # 3. Combine with dynamic weights
         # ========================================
-        # Technical: 70%, Sentiment: 30%
-        final_score = (tech_score_normalized * 0.7) + (sentiment_score * 0.3)
+        final_score = (tech_score_normalized * tech_weight) + (sentiment_score * sentiment_weight)
         
         # Determine action
         if final_score > 0.2:
@@ -205,11 +210,11 @@ class SignalGenerator:
         
         # Add summary reason
         if action == 'BUY':
-            reasons.insert(0, f"Strong buy signal (score: {final_score:+.2f})")
+            reasons.insert(0, f"Strong buy signal (score: {final_score:+.2f}, weights: tech={tech_weight:.0%}, sentiment={sentiment_weight:.0%})")
         elif action == 'SELL':
-            reasons.insert(0, f"Strong sell signal (score: {final_score:+.2f})")
+            reasons.insert(0, f"Strong sell signal (score: {final_score:+.2f}, weights: tech={tech_weight:.0%}, sentiment={sentiment_weight:.0%})")
         else:
-            reasons.insert(0, f"Weak signal, hold recommended (score: {final_score:+.2f})")
+            reasons.insert(0, f"Weak signal, hold recommended (score: {final_score:+.2f}, weights: tech={tech_weight:.0%}, sentiment={sentiment_weight:.0%})")
         
         return action, confidence, reasons
     
@@ -274,7 +279,20 @@ class SignalGenerator:
             'reasons': [f'Error generating signal: {error_msg}'] if error_msg else ['No signal generated'],
             'technical': {},
             'interpretation': {},
-            'sentiment': {},
+            'sentiment': {
+                "overall_score": 0.0,
+                "overall_label": "NEUTRAL",
+                "positive_count": 0,
+                "negative_count": 0,
+                "neutral_count": 0,
+                "total_articles": 0,
+                "articles": [],
+            },
+            'sentiment_impact': {
+                "impact": "LOW",
+                "weight": 0.1,
+                "reason": "No data",
+            },
             'risk_management': {
                 'stop_loss': 0.0,
                 'take_profit': 0.0,

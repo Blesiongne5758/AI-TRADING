@@ -6,8 +6,12 @@ Analysis Engine adalah modul yang menganalisis data dari Data Collector dan meng
 
 - ✅ **Technical Indicators** - RSI, MACD, EMA, Bollinger Bands, Volume, ATR (menggunakan **pandas-ta**)
 - ✅ **Interpretation System** - Scoring system (-100 to +100) dengan reason untuk setiap indikator
-- ✅ **Sentiment Analysis** - TextBlob (Phase 2a, simple & lightweight) dengan opsi FinBERT (Phase 2b, ML-based)
-- ✅ **Signal Generation** - Menggabungkan technical + sentiment menjadi trading signal dengan weighted scoring
+- ✅ **Sentiment Analysis** - Dual mode:
+  - **TextBlob** (MVP, cepat, ringan ~1MB)
+  - **FinBERT** (Advanced, akurat, ~500MB, optional upgrade)
+- ✅ **Sentiment Impact Analysis** - Dynamic weighting berdasarkan kekuatan sentimen
+- ✅ **Batch News Analysis** - Analisis multiple berita dengan distribusi positive/negative/neutral
+- ✅ **Signal Generation** - Menggabungkan technical + sentiment dengan adaptive weighting
 - ✅ **ATR-based Risk Management** - Stop-loss dan take-profit berdasarkan volatilitas (ATR)
 - ✅ **Confidence Scoring** - Confidence level 0-100% berdasarkan signal strength
 
@@ -32,12 +36,21 @@ Analysis Engine adalah modul yang menganalisis data dari Data Collector dan meng
 
 ### Upgrade ke FinBERT
 ```bash
-# Uncomment di requirements.txt
+# Install dependencies
 pip install transformers==4.36.2 torch==2.1.2
 
 # Update code
-generator = SignalGenerator(use_ml_sentiment=True)
+generator = SignalGenerator(use_finbert=True)
+
+# Atau langsung di SentimentAnalyzer
+analyzer = SentimentAnalyzer(use_finbert=True)
 ```
+
+**Note:** 
+- Model yang digunakan: `yiyanghkust/finbert-tone`
+- First time load akan download ~500MB
+- Startup lambat (30-60 detik pertama kali)
+- Lebih akurat untuk financial text
 
 ## 📁 Struktur File
 
@@ -157,10 +170,23 @@ python -m analysis.main_analysis
       → Volume 1.85x rata-rata → aktivitas tinggi
 
 📰 Sentiment Analysis:
-   Score: +0.720
-   Label: BULLISH
-   Confidence: 85%
-   Method: textblob
+   Overall Score: +0.450
+   Overall Label: POSITIVE
+   Total Articles: 20
+   Distribution: 12 positive, 3 negative, 5 neutral
+
+💡 Sentiment Impact:
+   Impact: HIGH
+   Weight in Decision: 40%
+   Reason: Sentimen kuat, bobot signifikan dalam keputusan
+
+📰 Top News Articles:
+   1. [CoinDesk] Bitcoin reaches new all-time high as institutional...
+      Sentiment: POSITIVE (score: +0.850)
+   2. [CoinTelegraph] Ethereum 2.0 upgrade shows promising results...
+      Sentiment: POSITIVE (score: +0.720)
+   3. [Decrypt] Solana DeFi ecosystem continues to grow with new...
+      Sentiment: POSITIVE (score: +0.680)
 ```
 
 ## 🔍 Penjelasan Komponen
@@ -241,20 +267,67 @@ stop_loss = price + (ATR * 2.0)  # Untuk SHORT
 
 ### 2. Sentiment Analysis (`sentiment_analysis.py`)
 
-#### Phase 2a: TextBlob (Current)
-- Menggunakan **TextBlob** library
-- Pattern matching + lexicon-based approach
-- Lightweight (~1MB)
-- Polarity: -1.0 (bearish) sampai +1.0 (bullish)
-- Subjectivity: 0.0 (objective) sampai 1.0 (subjective)
-- Good untuk MVP dan quick testing
+Class `SentimentAnalyzer` menganalisis sentimen berita crypto dengan dua mode:
 
-#### Phase 2b: FinBERT (Optional Upgrade)
-- Menggunakan **FinBERT** model (transformers)
-- ML-based, lebih akurat untuk financial text
-- Butuh transformers + torch (~500MB)
-- Startup lambat (30-60 detik pertama kali)
-- Lebih baik untuk production
+#### Mode 1: TextBlob (MVP - Default)
+- **Library**: TextBlob (~1MB)
+- **Kecepatan**: Cepat (<1 detik per artikel)
+- **Akurasi**: Cukup baik untuk MVP
+- **Method**: Pattern matching + lexicon-based
+- **Return**: Polarity -1.0 sampai +1.0
+
+#### Mode 2: FinBERT (Advanced - Optional)
+- **Model**: `yiyanghkust/finbert-tone` (~500MB)
+- **Kecepatan**: Lambat (30-60 detik pertama kali load)
+- **Akurasi**: Tinggi untuk financial text
+- **Method**: ML-based (transformers)
+- **Requirements**: `pip install transformers torch`
+
+#### API Methods
+
+**1. `analyze_text(text: str) -> Dict`**
+Analisis sentimen satu teks
+```python
+{
+    "score": 0.75,           # -1 sampai +1
+    "label": "POSITIVE",     # POSITIVE, NEGATIVE, NEUTRAL
+    "confidence": 0.85,      # 0-1
+    "method": "textblob"     # atau "finbert"
+}
+```
+
+**2. `analyze_news_batch(news_items: List[Dict]) -> Dict`**
+Analisis batch berita
+```python
+{
+    "overall_score": 0.45,           # Rata-rata skor
+    "overall_label": "POSITIVE",     # Label overall
+    "positive_count": 12,            # Jumlah berita positif
+    "negative_count": 3,             # Jumlah berita negatif
+    "neutral_count": 5,              # Jumlah berita netral
+    "total_articles": 20,            # Total artikel
+    "articles": [...]                # Detail per artikel
+}
+```
+
+**3. `get_sentiment_impact(sentiment_score: float) -> Dict`**
+Interpretasi dampak sentimen terhadap trading decision
+```python
+{
+    "impact": "HIGH",        # LOW, MODERATE, HIGH, VERY_HIGH
+    "weight": 0.4,           # Bobot dalam keputusan final (0-1)
+    "reason": "Sentimen kuat, bobot signifikan dalam keputusan"
+}
+```
+
+#### Dynamic Weighting System
+Bobot sentiment dalam keputusan final disesuaikan berdasarkan impact:
+- **LOW** (|score| < 0.15): weight = 10%
+- **MODERATE** (0.15 ≤ |score| < 0.4): weight = 25%
+- **HIGH** (0.4 ≤ |score| < 0.7): weight = 40%
+- **VERY_HIGH** (|score| ≥ 0.7): weight = 50%
+
+Technical analysis weight = 100% - sentiment weight
 
 ### 3. Signal Generator (`signal_generator.py`)
 
@@ -300,10 +373,24 @@ print(f"RSI: {result['indicators']['rsi']['value']}")
 print(f"RSI Interpretation: {result['interpretation']['rsi']}")
 
 # Test Sentiment Analysis
-sa = SentimentAnalyzer()
-sentiment = sa.analyze("Bitcoin reaches new all-time high")
-print(f"Score: {sentiment['score']}")
-print(f"Label: {sentiment['label']}")
+sa = SentimentAnalyzer(use_finbert=False)  # atau True untuk FinBERT
+
+# Analyze single text
+result = sa.analyze_text("Bitcoin reaches new all-time high")
+print(f"Score: {result['score']}")
+print(f"Label: {result['label']}")
+
+# Analyze batch of news
+news_items = [
+    {"title": "Bitcoin rises", "summary": "BTC price up 5%", "source": "CoinDesk", "link": "..."},
+    {"title": "Market crash", "summary": "Crypto down 10%", "source": "CoinTelegraph", "link": "..."},
+]
+batch_result = sa.analyze_news_batch(news_items)
+print(f"Overall: {batch_result['overall_label']} ({batch_result['overall_score']:+.3f})")
+
+# Get sentiment impact
+impact = sa.get_sentiment_impact(batch_result['overall_score'])
+print(f"Impact: {impact['impact']} (weight: {impact['weight']:.0%})")
 
 # Test Signal Generator
 sg = SignalGenerator()
@@ -381,15 +468,26 @@ generator = SignalGenerator(use_ml_sentiment=True)
 
 ### Error: "textblob not installed"
 ```
-⚠️  textblob not installed, sentiment analysis will use fallback
+❌ TextBlob error: ...
 ```
-**Solusi**: Install textblob dengan `pip install textblob==0.17.1`
+**Solusi**: Install textblob dengan `pip install textblob==0.17.1` dan download corpora: `python -m textblob.download_corpora`
 
 ### Error: "transformers not installed" (jika pakai FinBERT)
 ```
-⚠️  transformers/torch not installed, using TextBlob only
+⚠️  FinBERT gagal dimuat: ... Fallback ke TextBlob
 ```
-**Solusi**: Ini normal untuk Phase 2a. Install transformers jika ingin upgrade ke FinBERT
+**Solusi**: Ini normal jika transformers belum diinstall. Install dengan `pip install transformers==4.36.2 torch==2.1.2`
+
+### Error: "FinBERT download gagal"
+```
+🧠 Loading FinBERT model (first time may download ~500MB)...
+⚠️  FinBERT gagal dimuat: ... Fallback ke TextBlob
+```
+**Solusi**: 
+- Check koneksi internet
+- Model akan otomatis fallback ke TextBlob
+- Retry setelah koneksi stabil
+- Atau gunakan TextBlob saja (sudah cukup baik untuk MVP)
 
 ### Signal selalu HOLD
 **Penyebab**: Data belum cukup atau market sideways
@@ -408,7 +506,8 @@ generator = SignalGenerator(use_ml_sentiment=True)
 
 ### Sentiment Analysis
 - [TextBlob Documentation](https://textblob.readthedocs.io/)
-- [FinBERT Model](https://huggingface.co/ProsusAI/finbert) (optional upgrade)
+- [FinBERT Tone Model](https://huggingface.co/yiyanghkust/finbert-tone) (optional upgrade)
+- [Original FinBERT](https://huggingface.co/ProsusAI/finbert) (alternative)
 
 ## ✅ Status
 
@@ -416,8 +515,12 @@ generator = SignalGenerator(use_ml_sentiment=True)
 
 - ✅ Technical indicators (RSI, MACD, EMA, BB, Volume, ATR) - menggunakan **pandas-ta**
 - ✅ Interpretation system dengan scoring (-100 to +100)
-- ✅ Sentiment analysis - menggunakan **TextBlob** (simple & lightweight)
-- ✅ Signal generation dengan weighted scoring
+- ✅ Sentiment analysis dengan dual mode:
+  - **TextBlob** (MVP, cepat, ringan ~1MB)
+  - **FinBERT** (Advanced, akurat, ~500MB, optional)
+- ✅ Sentiment impact analysis dengan dynamic weighting
+- ✅ Batch news analysis dengan distribusi positive/negative/neutral
+- ✅ Signal generation dengan weighted scoring (technical + sentiment)
 - ✅ ATR-based risk management
 - ✅ Confidence scoring
 - ✅ Testing entry point

@@ -36,13 +36,12 @@ async def analyze_symbol(symbol: str, timeframe: str = "1h") -> None:
     
     # 2. Load news untuk sentiment analysis
     news = await db.get_latest_news(limit=20)
-    news_texts = [n['title'] + " " + (n.get('summary') or '') for n in news]
     
-    logger.info(f"📊 Loaded {len(candles)} candles dan {len(news_texts)} news articles")
+    logger.info(f"📊 Loaded {len(candles)} candles dan {len(news)} news articles")
     
     # 3. Generate signal
-    generator = SignalGenerator(use_ml_sentiment=False)
-    signal = generator.generate(candles, news_texts, symbol, timeframe)
+    generator = SignalGenerator(use_finbert=False)
+    signal = generator.generate(candles, news, symbol, timeframe)
     
     # 4. Print results
     print(f"\n📈 SIGNAL: {signal['action']}")
@@ -80,10 +79,24 @@ async def analyze_symbol(symbol: str, timeframe: str = "1h") -> None:
     
     print(f"\n📰 Sentiment Analysis:")
     sent = signal['sentiment']
-    print(f"   Score: {sent.get('score', 0):+.3f}")
-    print(f"   Label: {sent.get('label', 'N/A')}")
-    print(f"   Confidence: {sent.get('confidence', 0)}%")
-    print(f"   Method: {sent.get('method', 'N/A')}")
+    print(f"   Overall Score: {sent.get('overall_score', 0):+.3f}")
+    print(f"   Overall Label: {sent.get('overall_label', 'N/A')}")
+    print(f"   Total Articles: {sent.get('total_articles', 0)}")
+    print(f"   Distribution: {sent.get('positive_count', 0)} positive, {sent.get('negative_count', 0)} negative, {sent.get('neutral_count', 0)} neutral")
+    
+    print(f"\n💡 Sentiment Impact:")
+    impact = signal['sentiment_impact']
+    print(f"   Impact: {impact.get('impact', 'N/A')}")
+    print(f"   Weight in Decision: {impact.get('weight', 0):.0%}")
+    print(f"   Reason: {impact.get('reason', 'N/A')}")
+    
+    # Show top 3 news articles with sentiment
+    if sent.get('articles'):
+        print(f"\n📰 Top News Articles:")
+        for i, article in enumerate(sent['articles'][:3], 1):
+            sent_data = article.get('sentiment', {})
+            print(f"   {i}. [{article.get('source', 'Unknown')}] {article.get('title', 'No title')[:60]}...")
+            print(f"      Sentiment: {sent_data.get('label', 'N/A')} (score: {sent_data.get('score', 0):+.3f})")
     
     print(f"\n{'='*70}\n")
 
