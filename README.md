@@ -19,6 +19,26 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 - ✅ **Risk Management** - Stop-loss, take-profit, position sizing
 - ✅ **Confidence Scoring** - Weighted voting system dari multiple indicators
 
+## 📋 Fitur Fase 3: Paper Trading Engine
+
+- ✅ **Virtual Portfolio** - Simulasi trading dengan uang virtual ($10,000 initial balance)
+- ✅ **Position Management** - Track posisi terbuka (LONG/SHORT) dengan real-time P&L
+- ✅ **Risk Management** - 8-step validation (confidence, max positions, duplicate check, daily loss limit, dll)
+- ✅ **Order Execution** - Eksekusi otomatis dari analysis signals
+- ✅ **Trading Fee Simulation** - 0.1% fee per trade (seperti Binance)
+- ✅ **Stop-Loss & Take-Profit** - ATR-based, auto-check setiap 10 detik
+- ✅ **Performance Tracking** - Win rate, profit factor, drawdown, equity curve
+- ✅ **Time-based Scheduling** - Analisis 5 menit, SL/TP check 10 detik, snapshot 1 jam
+
+## 📋 Fitur Fase 4: XAI (Explainable AI) Module
+
+- ✅ **Explanation Generator** - Mengubah signal teknis menjadi narasi penjelasan bahasa manusia
+- ✅ **Trading Dictionary** - Kamus 50+ istilah trading dengan definisi dan contoh
+- ✅ **Context Builder** - Bangun konteks dari database untuk penjelasan yang lebih kaya
+- ✅ **Chat Agent** - Chat interface dengan pattern matching untuk tanya jawab
+- ✅ **Educational Notes** - Catatan edukasi untuk pemula di setiap penjelasan
+- ✅ **Interactive Demo** - Testing dan demo semua fitur XAI
+
 ## 📁 Struktur Proyek
 
 ```
@@ -37,6 +57,19 @@ ai-trading-agent/
 │   │   ├── sentiment_analysis.py    ← Analisis sentimen berita
 │   │   ├── signal_generator.py      ← Gabungkan → Signal + Confidence
 │   │   └── main_analysis.py         ← Entry point untuk testing
+│   ├── paper_trading/
+│   │   ├── __init__.py
+│   │   ├── portfolio_manager.py     ← Kelola saldo, posisi, P&L
+│   │   ├── risk_manager.py          ← Validasi risiko sebelum trade
+│   │   ├── order_executor.py        ← Eksekusi order dari signal
+│   │   └── main_paper_trading.py    ← Orchestrator (auto-trade loop)
+│   ├── xai/
+│   │   ├── __init__.py
+│   │   ├── explanation_generator.py ← Generate narasi dari signal
+│   │   ├── trading_dictionary.py    ← Kamus istilah trading (50+ istilah)
+│   │   ├── context_builder.py       ← Bangun konteks dari database
+│   │   ├── chat_agent.py            ← Chat interface dengan pattern matching
+│   │   └── main_xai.py              ← Testing & demo
 │   ├── .env.example           ← Template konfigurasi
 │   └── requirements.txt       ← Python dependencies
 ├── database/                  ← SQLite database (auto-created)
