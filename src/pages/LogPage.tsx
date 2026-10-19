@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { recentSignals, newsItems } from '../data/mockData';
+import { recentSignals, newsItems, tradeHistory } from '../data/mockData';
 import {
   TrendingUp,
   TrendingDown,
@@ -10,12 +10,15 @@ import {
   Filter,
   Search,
   Newspaper,
+  History,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react';
 
 export default function LogPage() {
   const [filter, setFilter] = useState<'ALL' | 'BUY' | 'SELL' | 'HOLD'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'signals' | 'news'>('signals');
+  const [activeTab, setActiveTab] = useState<'signals' | 'trades' | 'news'>('signals');
 
   const filteredSignals = recentSignals.filter((s) => {
     if (filter !== 'ALL' && s.signal !== filter) return false;
@@ -29,7 +32,7 @@ export default function LogPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Decision Log</h1>
-          <p className="text-sm text-dark-muted mt-1">Complete history of bot decisions with explanations</p>
+          <p className="text-sm text-dark-muted mt-1">Complete history of bot decisions, trades, and news sentiment</p>
         </div>
       </div>
 
@@ -45,6 +48,15 @@ export default function LogPage() {
           Trading Signals
         </button>
         <button
+          onClick={() => setActiveTab('trades')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'trades' ? 'bg-primary text-white' : 'text-dark-muted hover:text-white'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          Trade History
+        </button>
+        <button
           onClick={() => setActiveTab('news')}
           className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
             activeTab === 'news' ? 'bg-primary text-white' : 'text-dark-muted hover:text-white'
@@ -55,7 +67,7 @@ export default function LogPage() {
         </button>
       </div>
 
-      {activeTab === 'signals' ? (
+      {activeTab === 'signals' && (
         <>
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3">
@@ -181,8 +193,57 @@ export default function LogPage() {
             ))}
           </div>
         </>
-      ) : (
-        /* News Sentiment Tab */
+      )}
+
+      {activeTab === 'trades' && (
+        <div className="bg-dark-card rounded-xl border border-dark-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-dark-border">
+            <h3 className="text-sm font-semibold text-white">All Trades ({tradeHistory.length})</h3>
+          </div>
+          {/* Table Header */}
+          <div className="hidden sm:grid grid-cols-7 gap-2 px-4 py-2 border-b border-dark-border/50 text-xs text-dark-muted font-medium">
+            <span>Time</span>
+            <span>Symbol</span>
+            <span>Side</span>
+            <span>Price</span>
+            <span>Qty</span>
+            <span>Total</span>
+            <span>Status</span>
+          </div>
+          {/* Table Body */}
+          <div className="divide-y divide-dark-border/50">
+            {tradeHistory.map((trade) => (
+              <div key={trade.id} className="grid grid-cols-2 sm:grid-cols-7 gap-2 px-4 py-3 hover:bg-white/[0.02] transition-colors items-center">
+                <div className="flex items-center gap-1 text-xs text-dark-muted">
+                  <Clock className="w-3 h-3" />
+                  <span className="sm:hidden mr-1">Time:</span>
+                  {trade.timestamp.split(' ')[1]}
+                </div>
+                <span className="text-xs font-semibold text-white">{trade.symbol}</span>
+                <div className="flex items-center gap-1">
+                  {trade.side === 'BUY' ? (
+                    <ArrowUpRight className="w-3 h-3 text-success" />
+                  ) : (
+                    <ArrowDownRight className="w-3 h-3 text-danger" />
+                  )}
+                  <span className={`text-xs font-bold ${trade.side === 'BUY' ? 'text-success' : 'text-danger'}`}>
+                    {trade.side}
+                  </span>
+                </div>
+                <span className="text-xs text-white">${trade.price.toLocaleString()}</span>
+                <span className="text-xs text-dark-muted">{trade.quantity}</span>
+                <span className="text-xs text-white font-medium">${trade.total.toFixed(2)}</span>
+                <span className="flex items-center gap-1 text-xs text-success">
+                  <CheckCircle2 className="w-3 h-3" />
+                  {trade.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'news' && (
         <div className="space-y-3">
           {newsItems.map((news) => (
             <div key={news.id} className="bg-dark-card rounded-xl border border-dark-border p-4">
@@ -213,7 +274,7 @@ export default function LogPage() {
                       news.sentiment < -0.3 ? 'bg-danger' :
                       'bg-warning'
                     }`}
-                    style={{ width: `${Math.abs(news.sentiment) * 100}%`, marginLeft: news.sentiment < 0 ? 'auto' : '0' }}
+                    style={{ width: `${Math.abs(news.sentiment) * 100}%` }}
                   />
                 </div>
                 <span className="text-xs text-dark-muted">

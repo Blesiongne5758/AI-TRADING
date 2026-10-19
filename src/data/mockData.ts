@@ -368,3 +368,166 @@ export const performanceBySymbol = [
   { symbol: 'ADA/USDT', trades: 4, winRate: 50, pnl: 45 },
   { symbol: 'LINK/USDT', trades: 2, winRate: 100, pnl: 52 },
 ];
+
+// Trade History
+export interface TradeHistory {
+  id: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  type: 'MARKET' | 'LIMIT';
+  price: number;
+  quantity: number;
+  total: number;
+  fee: number;
+  timestamp: string;
+  signalId: string;
+  status: 'FILLED' | 'PARTIAL' | 'CANCELLED';
+}
+
+export const tradeHistory: TradeHistory[] = [
+  { id: 't-001', symbol: 'BTC/USDT', side: 'BUY', type: 'MARKET', price: 67250.00, quantity: 0.045, total: 3026.25, fee: 3.03, timestamp: '2024-01-15 08:30:12', signalId: 'sig-001', status: 'FILLED' },
+  { id: 't-002', symbol: 'ETH/USDT', side: 'BUY', type: 'MARKET', price: 3420.00, quantity: 1.2, total: 4104.00, fee: 4.10, timestamp: '2024-01-15 10:15:08', signalId: 'sig-002', status: 'FILLED' },
+  { id: 't-003', symbol: 'SOL/USDT', side: 'BUY', type: 'LIMIT', price: 142.50, quantity: 25, total: 3562.50, fee: 3.56, timestamp: '2024-01-14 22:00:45', signalId: 'sig-003', status: 'FILLED' },
+  { id: 't-004', symbol: 'BTC/USDT', side: 'SELL', type: 'MARKET', price: 69500.00, quantity: 0.032, total: 2224.00, fee: 2.22, timestamp: '2024-01-14 16:00:22', signalId: 'sig-004', status: 'FILLED' },
+  { id: 't-005', symbol: 'AVAX/USDT', side: 'BUY', type: 'MARKET', price: 34.50, quantity: 100, total: 3450.00, fee: 3.45, timestamp: '2024-01-13 20:00:15', signalId: 'sig-006', status: 'FILLED' },
+  { id: 't-006', symbol: 'LINK/USDT', side: 'BUY', type: 'LIMIT', price: 15.20, quantity: 150, total: 2280.00, fee: 2.28, timestamp: '2024-01-13 14:30:00', signalId: 'sig-007', status: 'FILLED' },
+  { id: 't-007', symbol: 'BTC/USDT', side: 'BUY', type: 'MARKET', price: 65800.00, quantity: 0.03, total: 1974.00, fee: 1.97, timestamp: '2024-01-12 09:00:00', signalId: 'sig-008', status: 'FILLED' },
+  { id: 't-008', symbol: 'ETH/USDT', side: 'SELL', type: 'MARKET', price: 3380.00, quantity: 0.8, total: 2704.00, fee: 2.70, timestamp: '2024-01-11 18:45:00', signalId: 'sig-009', status: 'FILLED' },
+  { id: 't-009', symbol: 'SOL/USDT', side: 'SELL', type: 'MARKET', price: 148.00, quantity: 15, total: 2220.00, fee: 2.22, timestamp: '2024-01-11 12:00:00', signalId: 'sig-010', status: 'FILLED' },
+  { id: 't-010', symbol: 'AVAX/USDT', side: 'SELL', type: 'LIMIT', price: 36.80, quantity: 50, total: 1840.00, fee: 1.84, timestamp: '2024-01-10 20:30:00', signalId: 'sig-011', status: 'FILLED' },
+];
+
+// System Module Status (Backend health)
+export interface ModuleStatus {
+  name: string;
+  module: string;
+  status: 'running' | 'warning' | 'error' | 'stopped';
+  uptime: string;
+  lastAction: string;
+  details: string;
+  metrics: { label: string; value: string }[];
+}
+
+export const moduleStatuses: ModuleStatus[] = [
+  {
+    name: 'Data Collector',
+    module: 'data_collector',
+    status: 'running',
+    uptime: '14d 6h 32m',
+    lastAction: '2 seconds ago',
+    details: 'WebSocket connected to Binance. Collecting OHLCV data for 6 symbols across 6 timeframes.',
+    metrics: [
+      { label: 'WS Connections', value: '6/6' },
+      { label: 'Candles Stored', value: '142,847' },
+      { label: 'News Fetched', value: '847 today' },
+      { label: 'DB Size', value: '234 MB' },
+    ],
+  },
+  {
+    name: 'Analysis Engine',
+    module: 'analysis',
+    status: 'running',
+    uptime: '14d 6h 30m',
+    lastAction: '15 seconds ago',
+    details: 'Computing technical indicators and sentiment analysis. FinBERT model loaded.',
+    metrics: [
+      { label: 'Indicators', value: 'RSI, MACD, EMA, BB' },
+      { label: 'Signals Today', value: '12' },
+      { label: 'Avg Confidence', value: '72%' },
+      { label: 'Model', value: 'FinBERT' },
+    ],
+  },
+  {
+    name: 'Paper Trading',
+    module: 'paper_trading',
+    status: 'running',
+    uptime: '14d 6h 28m',
+    lastAction: '5 minutes ago',
+    details: 'Portfolio manager active. Risk management enforcing 2% max risk per trade.',
+    metrics: [
+      { label: 'Open Positions', value: '3' },
+      { label: 'Total Trades', value: '47' },
+      { label: 'Win Rate', value: '68.5%' },
+      { label: 'Risk/Trade', value: '2%' },
+    ],
+  },
+  {
+    name: 'XAI Module',
+    module: 'xai',
+    status: 'running',
+    uptime: '14d 6h 25m',
+    lastAction: '1 minute ago',
+    details: 'Explanation generator active. Chat agent ready for user queries.',
+    metrics: [
+      { label: 'Explanations', value: '47 generated' },
+      { label: 'Chat Queries', value: '23 today' },
+      { label: 'Avg Response', value: '1.2s' },
+      { label: 'Language', value: 'ID/EN' },
+    ],
+  },
+  {
+    name: 'Telegram Bot',
+    module: 'notifications',
+    status: 'warning',
+    uptime: '14d 6h 20m',
+    lastAction: '12 minutes ago',
+    details: 'Bot connected. Rate limit approaching. Consider upgrading to premium API.',
+    metrics: [
+      { label: 'Messages Sent', value: '156 today' },
+      { label: 'Rate Limit', value: '78%' },
+      { label: 'Subscribers', value: '1' },
+      { label: 'Latency', value: '245ms' },
+    ],
+  },
+  {
+    name: 'FastAPI Server',
+    module: 'api',
+    status: 'running',
+    uptime: '14d 6h 32m',
+    lastAction: 'Active',
+    details: 'REST API serving frontend requests. All endpoints healthy.',
+    metrics: [
+      { label: 'Endpoints', value: '12 active' },
+      { label: 'Requests/min', value: '34' },
+      { label: 'Avg Response', value: '45ms' },
+      { label: 'Error Rate', value: '0.01%' },
+    ],
+  },
+];
+
+// Daily PnL data
+export const dailyPnL = [
+  { date: 'Jan 1', pnl: 0 },
+  { date: 'Jan 3', pnl: 120 },
+  { date: 'Jan 5', pnl: -70 },
+  { date: 'Jan 7', pnl: 230 },
+  { date: 'Jan 9', pnl: 170 },
+  { date: 'Jan 11', pnl: -70 },
+  { date: 'Jan 13', pnl: 270 },
+  { date: 'Jan 15', pnl: 170 },
+  { date: 'Jan 17', pnl: -70 },
+  { date: 'Jan 19', pnl: 230 },
+  { date: 'Jan 21', pnl: 70 },
+  { date: 'Jan 23', pnl: -130 },
+  { date: 'Jan 25', pnl: 180 },
+  { date: 'Jan 27', pnl: 147 },
+];
+
+// Indicator values for current analysis
+export interface IndicatorValue {
+  name: string;
+  value: string;
+  signal: 'bullish' | 'bearish' | 'neutral';
+  description: string;
+}
+
+export const currentIndicators: IndicatorValue[] = [
+  { name: 'RSI (14)', value: '42.5', signal: 'neutral', description: 'Netral - tidak overbought/oversold' },
+  { name: 'MACD', value: '+125.3', signal: 'bullish', description: 'Histogram positif, momentum naik' },
+  { name: 'EMA 20', value: '68,250', signal: 'bullish', description: 'Harga di atas EMA 20' },
+  { name: 'EMA 50', value: '67,100', signal: 'bullish', description: 'EMA 20 > EMA 50 (uptrend)' },
+  { name: 'EMA 200', value: '62,800', signal: 'bullish', description: 'Jangka panjang masih bullish' },
+  { name: 'Bollinger Bands', value: 'Middle', signal: 'neutral', description: 'Harga di tengah band' },
+  { name: 'Volume', value: '+15%', signal: 'bullish', description: 'Volume di atas rata-rata 20 hari' },
+  { name: 'Sentiment', value: '+0.42', signal: 'bullish', description: 'Berita cenderung positif' },
+];

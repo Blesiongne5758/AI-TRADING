@@ -10,6 +10,7 @@ import {
   Menu,
   X,
   Zap,
+  Activity,
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -21,6 +22,7 @@ const navItems = [
   { path: '/chart', label: 'Chart & Signals', icon: LineChart },
   { path: '/log', label: 'Decision Log', icon: ScrollText },
   { path: '/education', label: 'Edukasi & XAI', icon: GraduationCap },
+  { path: '/system', label: 'System Status', icon: Activity },
   { path: '/settings', label: 'Pengaturan', icon: Settings },
 ];
 

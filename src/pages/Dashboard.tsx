@@ -8,9 +8,17 @@ import {
   Activity,
   ArrowUpRight,
   ArrowDownRight,
+  Clock,
+  History,
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { portfolioStats, positions, recentSignals, equityCurveData, performanceBySymbol } from '../data/mockData';
+import {
+  AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts';
+import {
+  portfolioStats, positions, recentSignals,
+  equityCurveData, performanceBySymbol, tradeHistory, dailyPnL,
+} from '../data/mockData';
 
 export default function Dashboard() {
   return (
@@ -64,7 +72,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Equity Curve & Performance */}
+      {/* Equity Curve & Daily PnL */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Equity Curve */}
         <div className="lg:col-span-2 bg-dark-card rounded-xl border border-dark-border p-4">
@@ -84,6 +92,7 @@ export default function Dashboard() {
                     <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                   </linearGradient>
                 </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1a1d29" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} domain={['dataMin - 100', 'dataMax + 100']} />
                 <Tooltip
@@ -97,29 +106,40 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Performance by Symbol */}
+        {/* Daily PnL */}
         <div className="bg-dark-card rounded-xl border border-dark-border p-4">
-          <h3 className="text-sm font-semibold text-white mb-4">Performance by Symbol</h3>
-          <div className="space-y-3">
-            {performanceBySymbol.map((item) => (
-              <div key={item.symbol} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${item.pnl >= 0 ? 'bg-success' : 'bg-danger'}`} />
-                  <span className="text-xs font-medium text-white">{item.symbol}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-dark-muted">{item.winRate}% WR</span>
-                  <span className={`text-xs font-semibold ${item.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
-                    {item.pnl >= 0 ? '+' : ''}{item.pnl}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-white">Daily P&L</h3>
+            <BarChart3 className="w-4 h-4 text-dark-muted" />
+          </div>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dailyPnL}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1a1d29" />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1a1d29', border: '1px solid #2a2d3a', borderRadius: '8px' }}
+                  labelStyle={{ color: '#94a3b8', fontSize: 11 }}
+                  formatter={(value: number) => [`$${value}`, 'P&L']}
+                />
+                <Bar
+                  dataKey="pnl"
+                  fill="#6366f1"
+                  radius={[2, 2, 0, 0]}
+                  shape={(props: any) => {
+                    const { x, y, width, height, payload } = props;
+                    const color = payload.pnl >= 0 ? '#10b981' : '#ef4444';
+                    return <rect x={x} y={y} width={width} height={height} fill={color} rx={2} />;
+                  }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Active Positions & Recent Signals */}
+      {/* Active Positions & Performance by Symbol */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Active Positions */}
         <div className="bg-dark-card rounded-xl border border-dark-border p-4">
@@ -162,7 +182,6 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </div>
-                {/* Stop Loss / Take Profit bar */}
                 <div className="mt-2 pt-2 border-t border-dark-border/50">
                   <div className="flex justify-between text-xs">
                     <span className="text-danger">SL: ${pos.stopLoss.toLocaleString()}</span>
@@ -174,11 +193,44 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Performance by Symbol */}
+        <div className="bg-dark-card rounded-xl border border-dark-border p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-white">Performance by Symbol</h3>
+            <Target className="w-4 h-4 text-dark-muted" />
+          </div>
+          <div className="space-y-3">
+            {performanceBySymbol.map((item) => (
+              <div key={item.symbol} className="flex items-center justify-between p-2 rounded-lg bg-dark-bg/30">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    item.pnl >= 0 ? 'bg-success/10' : 'bg-danger/10'
+                  }`}>
+                    <span className="text-xs font-bold text-white">{item.symbol.split('/')[0]}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-white">{item.symbol}</span>
+                    <p className="text-xs text-dark-muted">{item.trades} trades • {item.winRate}% WR</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className={`text-sm font-bold ${item.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
+                    {item.pnl >= 0 ? '+' : ''}${item.pnl}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Signals & Trade History */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Recent Signals */}
         <div className="bg-dark-card rounded-xl border border-dark-border p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-white">Recent Bot Signals</h3>
-            <BarChart3 className="w-4 h-4 text-dark-muted" />
+            <Activity className="w-4 h-4 text-dark-muted" />
           </div>
           <div className="space-y-2">
             {recentSignals.slice(0, 5).map((signal) => (
@@ -221,6 +273,43 @@ export default function Dashboard() {
                     {signal.pnl >= 0 ? '+' : ''}${signal.pnl.toFixed(0)}
                   </span>
                 )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recent Trades */}
+        <div className="bg-dark-card rounded-xl border border-dark-border p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-white">Recent Trades</h3>
+            <History className="w-4 h-4 text-dark-muted" />
+          </div>
+          <div className="space-y-2">
+            {tradeHistory.slice(0, 6).map((trade) => (
+              <div key={trade.id} className="flex items-center gap-3 p-2 rounded-lg bg-dark-bg/50 border border-dark-border/50">
+                <div className={`w-7 h-7 rounded flex items-center justify-center ${
+                  trade.side === 'BUY' ? 'bg-success/10' : 'bg-danger/10'
+                }`}>
+                  <span className={`text-xs font-bold ${
+                    trade.side === 'BUY' ? 'text-success' : 'text-danger'
+                  }`}>
+                    {trade.side === 'BUY' ? 'B' : 'S'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-white">{trade.symbol}</span>
+                    <span className="text-xs text-dark-muted">{trade.type}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-dark-muted">
+                    <Clock className="w-3 h-3" />
+                    <span>{trade.timestamp.split(' ')[1]}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-medium text-white">${trade.total.toFixed(2)}</p>
+                  <p className="text-xs text-dark-muted">{trade.quantity} @ ${trade.price.toLocaleString()}</p>
+                </div>
               </div>
             ))}
           </div>
