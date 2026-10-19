@@ -6,7 +6,6 @@
 # Library Trading & Data
 # ============================================
 ccxt==4.2.25
-websockets==12.0
 aiohttp==3.9.1
 
 # ============================================
@@ -48,11 +47,15 @@ python-dotenv==1.0.0
 loguru==0.7.2
 
 # ============================================
-# FastAPI (Backend API)
+# FastAPI & Web Server
 # ============================================
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 websockets==12.0
+python-multipart==0.0.6
+
+# Note: CORS sudah built-in di FastAPI (fastapi.middleware.cors)
+# Tidak perlu install fastapi-cors terpisah
 
 # ============================================
 # XAI & Chat Agent (MVP - ringan)
