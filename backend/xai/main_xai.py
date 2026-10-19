@@ -96,13 +96,13 @@ async def demo_trading_dictionary():
     
     dictionary = TradingDictionary()
     
-    # Test some terms
-    test_terms = ["rsi", "macd", "stop_loss", "confidence", "paper_trading"]
+    # Test some terms dari berbagai kategori
+    test_terms = ["rsi", "macd", "stop_loss", "confidence", "bullish", "scalping"]
     
     for term in test_terms:
         term_data = dictionary.get_term(term)
         if term_data:
-            print(dictionary.format_term_explanation(term_data))
+            print(dictionary.format_explanation(term_data, level="full"))
             print()
 
 

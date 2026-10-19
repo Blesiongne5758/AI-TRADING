@@ -1,566 +1,272 @@
 """
 Trading Dictionary
-Kamus istilah trading crypto dengan penjelasan dalam bahasa Indonesia
+Kamus lengkap istilah trading untuk edukasi pemula
 """
-from typing import Dict, Optional
-from loguru import logger
+from typing import Dict, List
 
 
 class TradingDictionary:
-    """
-    Kamus istilah trading untuk edukasi pemula
-    
-    Berisi 50+ istilah trading dengan:
-    - Definisi dalam bahasa Indonesia
-    - Contoh penggunaan
-    - Kategori (technical, fundamental, risk, dll)
-    """
+    """Kamus istilah trading dengan penjelasan ramah pemula"""
 
     def __init__(self):
-        """Initialize kamus trading"""
         self.terms = self._build_dictionary()
-        logger.info(f"📚 Trading Dictionary loaded: {len(self.terms)} terms")
 
     def _build_dictionary(self) -> Dict[str, Dict]:
-        """Build kamus istilah trading"""
+        """Membangun kamus lengkap"""
         return {
-            # ========================================
-            # TECHNICAL ANALYSIS
-            # ========================================
+            # === INDICATORS ===
             "rsi": {
-                "term": "RSI (Relative Strength Index)",
-                "definition": "Indikator momentum yang mengukur kecepatan dan perubahan pergerakan harga. Nilainya 0-100.",
-                "interpretation": {
-                    "> 70": "Overbought (jenuh beli) - potensi harga turun",
-                    "< 30": "Oversold (jenuh jual) - potensi harga naik",
-                    "30-70": "Netral - tidak ada sinyal kuat"
-                },
-                "example": "RSI BTC = 28 → Market oversold, potensi rebound naik",
-                "category": "technical"
+                "name": "RSI (Relative Strength Index)",
+                "category": "indicator",
+                "simple": "Indikator yang mengukur apakah harga sudah 'terlalu mahal' (overbought) atau 'terlalu murah' (oversold). Skala 0-100.",
+                "detailed": "RSI membandingkan kekuatan kenaikan vs penurunan harga dalam periode tertentu (biasanya 14 candle). RSI > 70 = overbought (potensi turun), RSI < 30 = oversold (potensi naik).",
+                "analogy": "Bayangkan seperti speedometer mobil. Jika jarum di atas 70, mobil ngebut terlalu kencang dan perlu melambat. Jika di bawah 30, mobil terlalu pelan dan bisa ngebut lagi.",
+                "example": "RSI BTC = 28 → BTC oversold, ada potensi rebound.",
             },
             "macd": {
-                "term": "MACD (Moving Average Convergence Divergence)",
-                "definition": "Indikator trend-following yang menunjukkan hubungan antara dua moving average harga.",
-                "components": {
-                    "MACD Line": "EMA 12 - EMA 26",
-                    "Signal Line": "EMA 9 dari MACD Line",
-                    "Histogram": "MACD Line - Signal Line"
-                },
-                "interpretation": {
-                    "MACD > Signal": "Bullish crossover - sinyal beli",
-                    "MACD < Signal": "Bearish crossover - sinyal jual",
-                    "Histogram positif": "Momentum naik",
-                    "Histogram negatif": "Momentum turun"
-                },
-                "example": "MACD histogram berbalik positif → Momentum bullish, sinyal beli",
-                "category": "technical"
+                "name": "MACD (Moving Average Convergence Divergence)",
+                "category": "indicator",
+                "simple": "Indikator yang menunjukkan momentum tren dan arah pergerakan harga.",
+                "detailed": "MACD terdiri dari 3 garis: MACD line (perbedaan EMA 12 & 26), Signal line (EMA 9 dari MACD), dan Histogram (perbedaan MACD & Signal). Crossover histogram dari negatif ke positif = sinyal beli.",
+                "analogy": "Seperti melihat apakah mobil sedang加速 (accelerate) atau melambat. Histogram positif = mobil ngebut, negatif = melambat.",
+                "example": "MACD histogram crossover ke positif → momentum beli meningkat.",
             },
             "ema": {
-                "term": "EMA (Exponential Moving Average)",
-                "definition": "Rata-rata harga dengan bobot lebih besar pada data terbaru. Lebih responsif daripada SMA.",
-                "periods": {
-                    "EMA 20": "Short-term trend",
-                    "EMA 50": "Medium-term trend",
-                    "EMA 200": "Long-term trend"
-                },
-                "interpretation": {
-                    "Price > EMA": "Bullish trend",
-                    "Price < EMA": "Bearish trend",
-                    "EMA 20 > EMA 50 > EMA 200": "Strong uptrend (golden alignment)"
-                },
-                "example": "EMA 20 memotong ke atas EMA 50 → Golden cross, sinyal bullish kuat",
-                "category": "technical"
+                "name": "EMA (Exponential Moving Average)",
+                "category": "indicator",
+                "simple": "Rata-rata harga yang memberi bobot lebih pada data terbaru, sehingga lebih responsif terhadap perubahan harga.",
+                "detailed": "EMA 20 = rata-rata 20 candle terakhir dengan bobot lebih pada harga baru. EMA 50 & 200 untuk tren jangka menengah & panjang. Jika harga > EMA 200 = uptrend jangka panjang.",
+                "analogy": "Seperti garis tren yang mulus di tengah fluktuasi harga. Harga di atas garis = tren naik, di bawah = tren turun.",
+                "example": "Harga BTC > EMA 20 > EMA 50 > EMA 200 → uptrend kuat di semua timeframe.",
             },
             "bollinger": {
-                "term": "Bollinger Bands",
-                "definition": "Indikator volatilitas yang terdiri dari 3 garis: middle band (SMA 20), upper band, dan lower band.",
-                "components": {
-                    "Middle Band": "SMA 20 periode",
-                    "Upper Band": "Middle + (2 × Standard Deviation)",
-                    "Lower Band": "Middle - (2 × Standard Deviation)"
-                },
-                "interpretation": {
-                    "Price > Upper": "Overbought - potensi pullback",
-                    "Price < Lower": "Oversold - potensi bounce",
-                    "Bands menyempit": "Low volatility - potensi breakout"
-                },
-                "example": "Harga menyentuh lower band + RSI oversold → Potensi reversal naik",
-                "category": "technical"
+                "name": "Bollinger Bands",
+                "category": "indicator",
+                "simple": "Tiga garis yang mengapit harga: middle (SMA 20), upper, dan lower band. Menunjukkan volatilitas.",
+                "detailed": "Harga yang menyentuh upper band = overbought, lower band = oversold. Band yang menyempit = volatilitas rendah (potensi breakout), melebar = volatilitas tinggi.",
+                "analogy": "Seperti jalan raya dengan 3 lajur. Mobil (harga) biasanya di lajur tengah. Jika keluar lajur atas/bawah, biasanya akan kembali ke tengah.",
+                "example": "Harga menyentuh lower band → potensi bounce ke middle band.",
             },
             "atr": {
-                "term": "ATR (Average True Range)",
-                "definition": "Indikator volatilitas yang mengukur rata-rata pergerakan harga dalam periode tertentu.",
-                "usage": "Digunakan untuk menentukan stop-loss dan take-profit yang adaptif terhadap volatilitas market.",
-                "example": "ATR = $1,400 → Stop-loss = 2 × ATR = $2,800 dari entry price",
-                "category": "technical"
+                "name": "ATR (Average True Range)",
+                "category": "indicator",
+                "simple": "Mengukur volatilitas pasar - seberapa besar harga bergerak rata-rata per hari.",
+                "detailed": "ATR digunakan untuk menentukan jarak stop-loss yang realistis. ATR tinggi = pasar volatil, ATR rendah = pasar tenang. Biasanya SL = 2x ATR dari entry.",
+                "analogy": "Seperti mengukur ombak di laut. Ombak besar (ATR tinggi) = perlu perahu besar (SL lebar). Ombak kecil (ATR rendah) = perahu kecil cukup (SL sempit).",
+                "example": "ATR BTC = $1,500 → Stop-loss ideal = 2 x $1,500 = $3,000 dari entry.",
             },
             "volume": {
-                "term": "Volume",
-                "definition": "Jumlah aset yang diperdagangkan dalam periode tertentu. Mengkonfirmasi strength pergerakan harga.",
-                "interpretation": {
-                    "Volume tinggi + harga naik": "Strong bullish - konfirmasi uptrend",
-                    "Volume tinggi + harga turun": "Strong bearish - konfirmasi downtrend",
-                    "Volume rendah": "Weak movement - sinyal tidak reliable"
-                },
-                "example": "Volume 2x rata-rata + harga naik → Konfirmasi kuat untuk uptrend",
-                "category": "technical"
+                "name": "Volume",
+                "category": "indicator",
+                "simple": "Jumlah aset yang diperdagangkan dalam periode tertentu. Volume tinggi = banyak aktivitas, konfirmasi sinyal kuat.",
+                "detailed": "Volume mengkonfirmasi kekuatan pergerakan harga. Kenaikan harga + volume tinggi = uptrend kuat. Kenaikan harga + volume rendah = potensi fakeout.",
+                "analogy": "Seperti suara tepuk tangan. Tepuk ramai (volume tinggi) = pertunjukan bagus (tren kuat). Tepuk sepi (volume rendah) = kurang meyakinkan.",
+                "example": "Volume 2x rata-rata → konfirmasi sinyal beli sangat kuat.",
             },
-            "support": {
-                "term": "Support",
-                "definition": "Level harga di mana tekanan beli cukup kuat untuk mencegah harga turun lebih lanjut.",
-                "characteristics": [
-                    "Harga cenderung bounce dari level ini",
-                    "Semakin sering di-test, semakin kuat",
-                    "Break support = sinyal bearish"
-                ],
-                "example": "BTC support di $65,000 → Harga cenderung反弹 dari level ini",
-                "category": "technical"
-            },
-            "resistance": {
-                "term": "Resistance",
-                "definition": "Level harga di mana tekanan jual cukup kuat untuk mencegah harga naik lebih lanjut.",
-                "characteristics": [
-                    "Harga cenderung reject dari level ini",
-                    "Semakin sering di-test, semakin kuat",
-                    "Break resistance = sinyal bullish"
-                ],
-                "example": "BTC resistance di $70,000 → Harga sulit tembus level ini",
-                "category": "technical"
-            },
-            "golden_cross": {
-                "term": "Golden Cross",
-                "definition": "Ketika EMA/Moving Average jangka pendek memotong ke atas EMA jangka panjang. Sinyal bullish kuat.",
-                "example": "EMA 20 memotong ke atas EMA 50 → Golden cross terkonfirmasi, uptrend dimulai",
-                "category": "technical"
-            },
-            "death_cross": {
-                "term": "Death Cross",
-                "definition": "Ketika EMA/Moving Average jangka pendek memotong ke bawah EMA jangka panjang. Sinyal bearish kuat.",
-                "example": "EMA 20 memotong ke bawah EMA 50 → Death cross terkonfirmasi, downtrend dimulai",
-                "category": "technical"
-            },
-
-            # ========================================
-            # TRADING TERMS
-            # ========================================
+            
+            # === TRADING CONCEPTS ===
             "long": {
-                "term": "Long Position",
-                "definition": "Posisi beli - mengharapkan harga naik untuk profit.",
-                "example": "Open LONG BTC @ $67,000 → Profit jika harga naik di atas $67,000",
-                "category": "trading"
+                "name": "Long Position",
+                "category": "concept",
+                "simple": "Membeli aset dengan harapan harga akan NAIK.",
+                "detailed": "Anda beli di harga rendah, jual di harga tinggi. Profit = harga jual - harga beli. Ini posisi paling umum di pasar spot.",
+                "analogy": "Seperti beli rumah murah, tunggu harga naik, lalu jual mahal.",
+                "example": "Buy BTC @ $60,000, sell @ $70,000 → profit $10,000.",
             },
             "short": {
-                "term": "Short Position",
-                "definition": "Posisi jual - mengharapkan harga turun untuk profit.",
-                "example": "Open SHORT BTC @ $67,000 → Profit jika harga turun di bawah $67,000",
-                "category": "trading"
-            },
-            "entry": {
-                "term": "Entry Price",
-                "definition": "Harga saat membuka posisi trading.",
-                "example": "Entry BTC LONG @ $67,234.50",
-                "category": "trading"
-            },
-            "exit": {
-                "term": "Exit Price",
-                "definition": "Harga saat menutup posisi trading.",
-                "example": "Exit BTC LONG @ $70,000 → Profit $2,765.50",
-                "category": "trading"
+                "name": "Short Position",
+                "category": "concept",
+                "simple": "Bertaruh harga akan TURUN. Jual dulu (pinjam), beli kembali nanti di harga lebih rendah.",
+                "detailed": "Di pasar futures, Anda bisa 'jual' tanpa punya aset. Profit jika harga turun. Risiko tidak terbatas jika harga naik tak terkendali.",
+                "analogy": "Pinjam iPhone teman seharga $1,000, jual ke orang lain $1,000. Minggu depan harga iPhone turun jadi $800, beli baru, kembalikan ke teman. Profit $200.",
+                "example": "Short ETH @ $3,500, cover @ $3,000 → profit $500.",
             },
             "stop_loss": {
-                "term": "Stop Loss (SL)",
-                "definition": "Order otomatis untuk menutup posisi saat harga mencapai level tertentu, membatasi kerugian.",
-                "importance": "WAJIB digunakan untuk risk management. Bot menggunakan max 2% risiko per trade.",
-                "example": "Entry $67,000, SL $65,660 → Max loss 2% jika SL ter-trigger",
-                "category": "risk"
+                "name": "Stop-Loss (SL)",
+                "category": "concept",
+                "simple": "Order otomatis untuk MEMBATASI KERUGIAN jika harga bergerak berlawanan prediksi.",
+                "detailed": "Wajib dipasang di setiap trade. Biasanya 2x ATR dari entry. Jika harga menyentuh level SL, posisi otomatis ditutup untuk mencegah loss lebih besar.",
+                "analogy": "Seperti rem darurat di mobil. Jika mobil meluncur tak terkendali, rem otomatis aktif sebelum terjadi kecelakaan fatal.",
+                "example": "Buy BTC @ $67,000, SL @ $65,000 → max loss $2,000 jika harga turun.",
             },
             "take_profit": {
-                "term": "Take Profit (TP)",
-                "definition": "Order otomatis untuk menutup posisi saat harga mencapai target profit.",
-                "example": "Entry $67,000, TP $70,350 → Target profit 5%",
-                "category": "risk"
-            },
-            "pnl": {
-                "term": "P&L (Profit and Loss)",
-                "definition": "Keuntungan atau kerugian dari trading. Dihitung setelah dikurangi trading fee.",
-                "formula": "P&L = (Exit Price - Entry Price) × Quantity - Fees",
-                "example": "P&L = +$100 (profit) atau -$50 (loss)",
-                "category": "trading"
-            },
-            "drawdown": {
-                "term": "Drawdown",
-                "definition": "Penurunan portfolio dari peak tertinggi ke trough terendah. Mengukur risiko maksimum.",
-                "example": "Max drawdown 5% → Portfolio pernah turun 5% dari titik tertinggi",
-                "category": "risk"
-            },
-            "position_size": {
-                "term": "Position Size",
-                "definition": "Jumlah modal yang digunakan untuk satu trade. Bot menggunakan 2-10% dari portfolio.",
-                "factors": [
-                    "Confidence level (semakin tinggi = semakin besar)",
-                    "Risk per trade (max 2%)",
-                    "Available balance"
-                ],
-                "example": "Position size 5% dari $10,000 = $500",
-                "category": "risk"
-            },
-
-            # ========================================
-            # SIGNAL & CONFIDENCE
-            # ========================================
-            "signal": {
-                "term": "Trading Signal",
-                "definition": "Rekomendasi bot untuk BUY, SELL, atau HOLD berdasarkan analisis teknikal dan sentimen.",
-                "types": {
-                    "STRONG_BUY": "Sinyal beli sangat kuat (confidence ≥ 75%)",
-                    "BUY": "Sinyal beli (confidence 55-74%)",
-                    "HOLD": "Tidak ada sinyal kuat, tunggu konfirmasi",
-                    "SELL": "Sinyal jual (confidence 55-74%)",
-                    "STRONG_SELL": "Sinyal jual sangat kuat (confidence ≥ 75%)"
-                },
-                "example": "Signal: STRONG_BUY, Confidence: 85% → Rekomendasi beli dengan keyakinan tinggi",
-                "category": "signal"
+                "name": "Take-Profit (TP)",
+                "category": "concept",
+                "simple": "Order otomatis untuk MENGAMANKAN PROFIT saat harga mencapai target.",
+                "detailed": "Target profit biasanya 2x jarak stop-loss (risk/reward 1:2). Jika harga menyentuh TP, posisi ditutup dan profit masuk ke saldo.",
+                "analogy": "Seperti target skor dalam game. Begitu skor tercapai, level selesai dan Anda dapat reward.",
+                "example": "Buy BTC @ $67,000, TP @ $71,000 → profit $4,000 otomatis diamankan.",
             },
             "confidence": {
-                "term": "Confidence Score",
-                "definition": "Skor 0-100% yang menunjukkan seberapa yakin bot dengan sinyal tradingnya.",
-                "interpretation": {
-                    "≥ 75%": "High confidence - sinyal kuat",
-                    "55-74%": "Medium confidence - sinyal moderate",
-                    "< 55%": "Low confidence - sinyal lemah, tidak di-trade"
-                },
-                "calculation": "Berdasarkan weighted average dari semua indikator teknikal dan sentimen",
-                "example": "Confidence 85% → 85% indikator mendukung sinyal BUY",
-                "category": "signal"
+                "name": "Confidence Score",
+                "category": "concept",
+                "simple": "Seberapa yakin AI dengan keputusannya. Skala 0-100%. Semakin tinggi = semakin banyak indikator yang sejalan.",
+                "detailed": "Confidence dihitung dari bobot setiap indikator. Jika RSI, MACD, EMA, dan sentimen semua bullish → confidence tinggi. Jika hanya 1-2 indikator → confidence rendah.",
+                "analogy": "Seperti voting di kelas. Jika 9 dari 10 teman bilang jawaban A benar → confidence 90%. Jika hanya 5 dari 10 → confidence 50% (ragu).",
+                "example": "Confidence 85% → 85% indikator mendukung sinyal beli.",
             },
-            "risk_reward": {
-                "term": "Risk/Reward Ratio",
-                "definition": "Perbandingan antara potensi loss (risk) dan potensi profit (reward).",
-                "formula": "Risk/Reward = Reward Distance / Risk Distance",
-                "interpretation": {
-                    "1:2": "Untuk setiap $1 risiko, target profit $2 (GOOD)",
-                    "1:3": "Untuk setiap $1 risiko, target profit $3 (VERY GOOD)",
-                    "< 1:1": "Risk lebih besar dari reward (BAD)"
-                },
-                "example": "SL distance $1,400, TP distance $2,800 → Risk/Reward 1:2",
-                "category": "risk"
-            },
-
-            # ========================================
-            # SENTIMENT ANALYSIS
-            # ========================================
-            "sentiment": {
-                "term": "Sentiment Analysis",
-                "definition": "Analisis berita dan media sosial menggunakan AI untuk mengukur sentimen pasar.",
-                "score": {
-                    "+1.0": "Sangat bullish (sangat positif)",
-                    "+0.5": "Moderately bullish",
-                    "0.0": "Netral",
-                    "-0.5": "Moderately bearish",
-                    "-1.0": "Sangat bearish (sangat negatif)"
-                },
-                "impact": "Sentimen berita mempengaruhi 10-30% dari keputusan trading bot",
-                "example": "Sentiment score +0.65 → Berita cenderung positif, mendukung sinyal beli",
-                "category": "sentiment"
-            },
-            "bullish": {
-                "term": "Bullish",
-                "definition": "Kondisi market yang optimis, mengharapkan harga naik. Berasal dari cara banteng menyerang (menanduk ke atas).",
-                "indicators": [
-                    "RSI < 30 (oversold)",
-                    "MACD bullish crossover",
-                    "Price > EMA",
-                    "Volume tinggi + harga naik",
-                    "Sentimen positif"
-                ],
-                "example": "Market bullish → Ekspektasi harga akan naik",
-                "category": "sentiment"
-            },
-            "bearish": {
-                "term": "Bearish",
-                "definition": "Kondisi market yang pesimis, mengharapkan harga turun. Berasal dari cara beruang menyerang (menampar ke bawah).",
-                "indicators": [
-                    "RSI > 70 (overbought)",
-                    "MACD bearish crossover",
-                    "Price < EMA",
-                    "Volume tinggi + harga turun",
-                    "Sentimen negatif"
-                ],
-                "example": "Market bearish → Ekspektasi harga akan turun",
-                "category": "sentiment"
-            },
-
-            # ========================================
-            # RISK MANAGEMENT
-            # ========================================
-            "risk_management": {
-                "term": "Risk Management",
-                "definition": "Strategi untuk mengelola dan membatasi risiko dalam trading.",
-                "bot_rules": [
-                    "Max 2% risiko per trade",
-                    "Max 5 posisi terbuka bersamaan",
-                    "Max 20% portfolio per posisi",
-                    "Daily loss limit 5%",
-                    "Min confidence 55% untuk trade"
-                ],
-                "importance": "SANGAT PENTING untuk mencegah kerugian besar",
-                "example": "Risk management aktif → Max loss per trade hanya 2% dari portfolio",
-                "category": "risk"
+            "drawdown": {
+                "name": "Drawdown",
+                "category": "concept",
+                "simple": "Penurunan saldo dari titik tertinggi (peak). Mengukur seberapa besar kerugian maksimum.",
+                "detailed": "Jika saldo peak $12,000 lalu turun ke $10,000 → drawdown 16.7%. Max drawdown = kerugian terburuk yang pernah dialami. Trader profesional biasanya max drawdown < 20%.",
+                "analogy": "Seperti mendaki gunung lalu turun ke lembah. Drawdown = seberapa dalam Anda turun dari puncak.",
+                "example": "Peak $12,000 → current $10,800 → drawdown 10%.",
             },
             "position_sizing": {
-                "term": "Position Sizing",
-                "definition": "Menentukan jumlah modal yang digunakan untuk satu trade berdasarkan risk tolerance.",
-                "bot_logic": {
-                    "Confidence ≥ 75%": "Position size 10% dari portfolio",
-                    "Confidence 60-74%": "Position size 5% dari portfolio",
-                    "Confidence < 60%": "Position size 2% dari portfolio"
-                },
-                "example": "Portfolio $10,000, confidence 80% → Position size $1,000 (10%)",
-                "category": "risk"
+                "name": "Position Sizing",
+                "category": "concept",
+                "simple": "Menentukan berapa banyak uang yang dipertaruhkan di satu trade. Aturan umum: max 2% risiko per trade.",
+                "detailed": "Jika saldo $10,000 dan max risk 2% = max loss $200 per trade. Jika SL distance 5%, maka position size = $200/5% = $4,000 (40% dari saldo).",
+                "analogy": "Seperti bertaruh di poker. Jangan all-in di satu tangan. Bet kecil untuk bertahan lama, bet besar hanya jika sangat yakin.",
+                "example": "Saldo $10,000, risk 2% → max loss $200 → position size disesuaikan.",
             },
-            "daily_loss_limit": {
-                "term": "Daily Loss Limit",
-                "definition": "Batas kerugian harian. Jika tercapai, bot stop trading sampai hari berikutnya.",
-                "bot_setting": "5% dari initial balance ($500 dari $10,000)",
-                "purpose": "Mencegah emotional trading dan kerugian beruntun",
-                "example": "Daily loss limit $500 → Jika loss hari ini sudah $500, bot stop trading",
-                "category": "risk"
+            "risk_reward_ratio": {
+                "name": "Risk/Reward Ratio (RR)",
+                "category": "concept",
+                "simple": "Perbandingan antara potensi kerugian vs potensi keuntungan. Idealnya minimal 1:2.",
+                "detailed": "Jika SL = $100 dan TP = $200 → RR = 1:2. Artinya Anda rela rugi $100 untuk potensi untung $200. Dengan RR 1:2, Anda bisa salah 50% masih profit.",
+                "analogy": "Seperti investasi waktu. Rela belajar 1 jam (risiko) untuk dapat ilmu yang berguna seumur hidup (reward).",
+                "example": "SL $500, TP $1,000 → RR 1:2. Worth it!",
             },
-
-            # ========================================
-            # MARKET CONDITIONS
-            # ========================================
-            "overbought": {
-                "term": "Overbought",
-                "definition": "Kondisi dimana harga sudah naik terlalu banyak dan cepat, potensi koreksi turun.",
-                "indicators": [
-                    "RSI > 70",
-                    "Price > Upper Bollinger Band",
-                    "Volume sangat tinggi"
-                ],
-                "action": "Pertimbangkan untuk take profit atau jangan entry baru",
-                "example": "RSI = 78 → Market overbought, potensi koreksi",
-                "category": "market"
-            },
-            "oversold": {
-                "term": "Oversold",
-                "definition": "Kondisi dimana harga sudah turun terlalu banyak dan cepat, potensi rebound naik.",
-                "indicators": [
-                    "RSI < 30",
-                    "Price < Lower Bollinger Band",
-                    "Volume sangat tinggi"
-                ],
-                "action": "Pertimbangkan untuk entry (buy the dip)",
-                "example": "RSI = 25 → Market oversold, potensi rebound",
-                "category": "market"
-            },
-            "breakout": {
-                "term": "Breakout",
-                "definition": "Ketika harga menembus level support atau resistance dengan volume tinggi.",
-                "types": {
-                    "Breakout resistance": "Bullish signal - harga naik lebih tinggi",
-                    "Breakdown support": "Bearish signal - harga turun lebih rendah"
-                },
-                "confirmation": "Butuh volume tinggi untuk konfirmasi breakout valid",
-                "example": "BTC breakout resistance $70,000 dengan volume 2x → Bullish breakout confirmed",
-                "category": "market"
-            },
-            "consolidation": {
-                "term": "Consolidation",
-                "definition": "Fase dimana harga bergerak sideways (datar) dalam range tertentu sebelum breakout.",
-                "characteristics": [
-                    "Bollinger Bands menyempit",
-                    "Volume rendah",
-                    "Tidak ada trend jelas"
-                ],
-                "action": "Tunggu breakout, jangan entry saat consolidation",
-                "example": "BTC consolidation $65,000-$67,000 → Tunggu breakout ke atas atau bawah",
-                "category": "market"
-            },
-
-            # ========================================
-            # TRADING FEES
-            # ========================================
-            "trading_fee": {
-                "term": "Trading Fee",
-                "definition": "Biaya yang dikenakan exchange untuk setiap transaksi trading.",
-                "bot_simulation": "0.1% per trade (seperti Binance)",
-                "impact": "Dihitung 2x: saat entry dan exit",
-                "example": "Position $1,000 → Fee entry $1 + Fee exit $1 = Total fee $2",
-                "category": "trading"
-            },
-
-            # ========================================
-            # PAPER TRADING
-            # ========================================
-            "paper_trading": {
-                "term": "Paper Trading",
-                "definition": "Simulasi trading dengan uang virtual. Tidak ada risiko kehilangan uang nyata.",
-                "benefits": [
-                    "Belajar tanpa risiko",
-                    "Test strategy",
-                    "Build confidence",
-                    "Understand market"
-                ],
-                "bot_setting": "Initial balance $10,000 (virtual)",
-                "example": "Paper trading dengan $10,000 virtual → Belajar trading tanpa risiko",
-                "category": "general"
-            },
-
-            # ========================================
-            # PERFORMANCE METRICS
-            # ========================================
             "win_rate": {
-                "term": "Win Rate",
-                "definition": "Persentase trade yang profit dari total trade.",
-                "formula": "Win Rate = (Winning Trades / Total Trades) × 100%",
-                "interpretation": {
-                    "> 60%": "Good win rate",
-                    "50-60%": "Average win rate",
-                    "< 50%": "Poor win rate"
-                },
-                "example": "Win rate 70% → 7 dari 10 trade profit",
-                "category": "performance"
+                "name": "Win Rate",
+                "category": "concept",
+                "simple": "Persentase trade yang profit dari total trade. Win rate 60% = 6 dari 10 trade profit.",
+                "detailed": "Win rate tinggi tidak selalu berarti profit. Jika win rate 90% tapi profit kecil-kecil dan loss besar-besar, tetap rugi. Yang penting adalah profit factor (avg win / avg loss).",
+                "analogy": "Seperti basket. Shoot 10 kali masuk 6 (60% win rate). Tapi kalau yang masuk 2 poin, yang miss 3 poin (free throw), tetap rugi.",
+                "example": "100 trades, 60 win, 40 loss → win rate 60%.",
             },
             "profit_factor": {
-                "term": "Profit Factor",
-                "definition": "Rasio antara total profit dan total loss. Mengukur efektivitas strategy.",
-                "formula": "Profit Factor = Total Profit / Total Loss",
-                "interpretation": {
-                    "> 2.0": "Excellent strategy",
-                    "1.5-2.0": "Good strategy",
-                    "1.0-1.5": "Average strategy",
-                    "< 1.0": "Losing strategy"
-                },
-                "example": "Profit factor 2.5 → Untuk setiap $1 loss, profit $2.50",
-                "category": "performance"
+                "name": "Profit Factor",
+                "category": "concept",
+                "simple": "Rasio total profit vs total loss. Profit factor > 1 = sistem profit, < 1 = sistem loss.",
+                "detailed": "Profit Factor = (Avg Win × Win Rate) / (Avg Loss × Loss Rate). PF 2.0 = setiap $1 yang rugi, sistem menghasilkan $2 profit. PF ideal > 1.5.",
+                "analogy": "Seperti mesin penjual. Setiap $1 yang dimasukkan, keluar $2. Mesin bagus!",
+                "example": "Avg win $200, avg loss $100, WR 50% → PF = 2.0.",
             },
-            "sharpe_ratio": {
-                "term": "Sharpe Ratio",
-                "definition": "Mengukur return yang disesuaikan dengan risiko. Semakin tinggi, semakin baik.",
-                "interpretation": {
-                    "> 2.0": "Excellent risk-adjusted return",
-                    "1.0-2.0": "Good risk-adjusted return",
-                    "< 1.0": "Poor risk-adjusted return"
-                },
-                "example": "Sharpe ratio 1.8 → Return yang baik relatif terhadap risiko",
-                "category": "performance"
+            "slippage": {
+                "name": "Slippage",
+                "category": "concept",
+                "simple": "Perbedaan antara harga yang diharapkan vs harga eksekusi aktual. Terjadi karena volatilitas atau likuiditas rendah.",
+                "detailed": "Di market volatile (seperti crypto), slippage bisa signifikan. Order di harga $100 bisa ter-eksekusi di $100.50. Slippage tinggi = likuiditas rendah.",
+                "analogy": "Seperti pesan makanan di aplikasi. Harga tertera $10, tapi saat checkout jadi $10.50 karena biaya tambahan.",
+                "example": "Expected entry $67,000, actual $67,050 → slippage $50.",
             },
-
-            # ========================================
-            # GENERAL TERMS
-            # ========================================
+            
+            # === MARKET TERMS ===
+            "bullish": {
+                "name": "Bullish",
+                "category": "market",
+                "simple": "Pasar atau aset diperkirakan akan NAIK. Optimis.",
+                "detailed": "Istilah dari gerakan banteng (bull) yang menyeruduk ke atas. Bullish market = tren naik berkepanjangan. Bullish signal = indikator mendukung kenaikan.",
+                "analogy": "Seperti musim semi - semua tumbuh, optimis, harga naik.",
+                "example": "Sentimen berita positif → pasar bullish.",
+            },
+            "bearish": {
+                "name": "Bearish",
+                "category": "market",
+                "simple": "Pasar atau aset diperkirakan akan TURUN. Pesimis.",
+                "detailed": "Istilah dari gerakan beruang (bear) yang mencakar ke bawah. Bearish market = tren turun (bear market). Bearish signal = indikator mendukung penurunan.",
+                "analogy": "Seperti musim dingin - semua layu, pesimis, harga turun.",
+                "example": "Regulasi ketat → pasar bearish.",
+            },
+            "breakout": {
+                "name": "Breakout",
+                "category": "market",
+                "simple": "Harga menembus level resistance/support penting dengan volume tinggi.",
+                "detailed": "Breakout di atas resistance = sinyal beli kuat. Breakout di bawah support = sinyal jual kuat. Harus dikonfirmasi dengan volume tinggi agar tidak fakeout.",
+                "analogy": "Seperti pelari yang menembus garis finish. Butuh tenaga besar (volume) untuk benar-benar breakthrough.",
+                "example": "BTC break above $70,000 resistance dengan volume 2x → breakout valid.",
+            },
+            "fakeout": {
+                "name": "Fakeout (False Breakout)",
+                "category": "market",
+                "simple": "Harga seolah menembus level penting, tapi segera berbalik arah. Jebakan.",
+                "detailed": "Sering terjadi di market volatile. Trader yang entry saat fakeout akan rugi. Solusi: tunggu konfirmasi (close candle di luar level, volume tinggi).",
+                "analogy": "Seperti hantu yang muncul tiba-tiba lalu menghilang. Kaget tapi tidak nyata.",
+                "example": "BTC break $70K tapi langsung turun lagi → fakeout, jangan entry!",
+            },
+            "whale": {
+                "name": "Whale (Paus)",
+                "category": "market",
+                "simple": "Investor/institusi dengan modal sangat besar yang bisa menggerakkan pasar.",
+                "detailed": "Di crypto, whale = wallet dengan ribuan BTC atau jutaan USDT. Pergerakan whale sering jadi sinyal bagi trader ritel. Whale buying = bullish, whale selling = bearish.",
+                "analogy": "Seperti ikan paus di laut. Gerakannya menciptakan ombak besar yang mempengaruhi ikan-ikan kecil (trader ritel).",
+                "example": "Whale memindahkan 5,000 BTC ke exchange → potensi selling, bearish.",
+            },
+            
+            # === STRATEGY TERMS ===
+            "scalping": {
+                "name": "Scalping",
+                "category": "strategy",
+                "simple": "Trading sangat cepat (detik-menit) untuk profit kecil tapi sering.",
+                "detailed": "Scalper masuk-keluar pasar dalam hitungan detik/menit. Butuh fokus tinggi, fee rendah, dan eksekusi cepat. Profit per trade kecil (0.1-0.5%) tapi volume trade tinggi.",
+                "analogy": "Seperti mengambil receh di jalanan. Satu-satu kecil, tapi kalau banyak jadi lumayan.",
+                "example": "Scalping BTC 100 trades/hari, profit 0.2% per trade → total 20% sehari.",
+            },
+            "swing_trading": {
+                "name": "Swing Trading",
+                "category": "strategy",
+                "simple": "Trading jangka menengah (hari-minggu) menangkap 'ayunan' harga.",
+                "detailed": "Swing trader hold posisi beberapa hari hingga minggu. Target profit 5-20% per trade. Lebih santai daripada scalping, cocok untuk yang punya pekerjaan lain.",
+                "analogy": "Seperti peselancar yang menunggu ombak besar. Sabar, lalu surf satu ombak panjang.",
+                "example": "Buy BTC di support, hold 5 hari, sell di resistance → profit 8%.",
+            },
             "dyor": {
-                "term": "DYOR (Do Your Own Research)",
-                "definition": "Prinsip penting dalam trading: selalu lakukan riset mandiri sebelum mengambil keputusan.",
-                "importance": "Bot memberikan analisis, tapi keputusan final tetap di tangan Anda",
-                "example": "DYOR → Jangan blindly follow bot, pahami analisisnya",
-                "category": "general"
-            },
-            "fomo": {
-                "term": "FOMO (Fear Of Missing Out)",
-                "definition": "Rasa takut ketinggalan opportunity, sering menyebabkan entry di harga tinggi.",
-                "danger": "Penyebab utama loss bagi trader pemula",
-                "advice": "Jangan FOMO, tunggu signal yang jelas dari bot",
-                "example": "Harga naik cepat → Jangan FOMO entry, tunggu pullback atau signal baru",
-                "category": "psychology"
-            },
-            "hodl": {
-                "term": "HODL (Hold On for Dear Life)",
-                "definition": "Strategi hold aset dalam jangka panjang tanpa peduli fluktuasi jangka pendek.",
-                "origin": "Typo dari 'HOLD' yang menjadi meme di crypto community",
-                "example": "HODL BTC → Hold untuk jangka panjang, tidak panic sell saat downturn",
-                "category": "strategy"
+                "name": "DYOR (Do Your Own Research)",
+                "category": "strategy",
+                "simple": "Lakukan riset mandiri. Jangan percaya 100% pada siapapun, termasuk AI ini!",
+                "detailed": "Prinsip paling penting di trading. AI bisa salah, influencer bisa bias, berita bisa hoax. Selalu verifikasi dari banyak sumber sebelum mengambil keputusan.",
+                "analogy": "Seperti sebelum beli rumah, Anda survei lokasi, cek sertifikat, tanya tetangga. Jangan cuma lihat foto!",
+                "example": "AI bilang BUY, tapi Anda riset sendiri dan menemukan berita negatif → jangan ikuti AI!",
             },
         }
 
-    def get_term(self, term: str) -> Optional[Dict]:
-        """
-        Ambil definisi istilah dari kamus
-        
-        Args:
-            term: Istilah yang dicari (case-insensitive)
-        
-        Returns:
-            Dictionary dengan definisi atau None jika tidak ditemukan
-        """
-        term_lower = term.lower().strip()
-        
-        # Direct match
-        if term_lower in self.terms:
-            return self.terms[term_lower]
-        
-        # Partial match
-        for key, value in self.terms.items():
-            if term_lower in key or term_lower in value["term"].lower():
-                return value
-        
-        return None
-
-    def search_terms(self, query: str) -> list:
-        """
-        Cari istilah berdasarkan query
-        
-        Args:
-            query: Search query
-        
-        Returns:
-            List of matching terms
-        """
+    def search(self, query: str) -> List[Dict]:
+        """Mencari istilah berdasarkan query"""
         query_lower = query.lower()
         results = []
-        
-        for key, value in self.terms.items():
-            if (query_lower in key or 
-                query_lower in value["term"].lower() or 
-                query_lower in value["definition"].lower()):
-                results.append(value)
-        
+
+        for key, data in self.terms.items():
+            # Cari di key, name, simple, detailed
+            if (
+                query_lower in key
+                or query_lower in data["name"].lower()
+                or query_lower in data["simple"].lower()
+                or query_lower in data["detailed"].lower()
+            ):
+                results.append({"key": key, **data})
+
         return results
 
-    def get_terms_by_category(self, category: str) -> list:
-        """
-        Ambil semua istilah dalam kategori tertentu
-        
-        Args:
-            category: Kategori (technical, trading, risk, sentiment, market, performance, general, psychology, strategy)
-        
-        Returns:
-            List of terms in category
-        """
+    def get_term(self, key: str) -> Dict:
+        """Mengambil detail satu istilah"""
+        return self.terms.get(key.lower())
+
+    def get_by_category(self, category: str) -> List[Dict]:
+        """Mengambil semua istilah dalam kategori"""
         return [
-            value for value in self.terms.values()
-            if value.get("category") == category
+            {"key": k, **v}
+            for k, v in self.terms.items()
+            if v["category"] == category
         ]
 
-    def format_term_explanation(self, term_data: Dict) -> str:
-        """
-        Format penjelasan istilah untuk ditampilkan
-        
-        Args:
-            term_data: Dictionary dengan data istilah
-        
-        Returns:
-            Formatted string
-        """
-        lines = []
-        lines.append(f"📖 {term_data['term']}")
-        lines.append(f"   {term_data['definition']}")
-        
-        if "interpretation" in term_data:
-            lines.append("\n   Interpretasi:")
-            for key, value in term_data["interpretation"].items():
-                lines.append(f"     • {key}: {value}")
-        
-        if "components" in term_data:
-            lines.append("\n   Komponen:")
-            for key, value in term_data["components"].items():
-                lines.append(f"     • {key}: {value}")
-        
-        if "example" in term_data:
-            lines.append(f"\n   💡 Contoh: {term_data['example']}")
-        
-        if "category" in term_data:
-            lines.append(f"\n   🏷️  Kategori: {term_data['category']}")
-        
-        return "\n".join(lines)
+    def format_explanation(self, term: Dict, level: str = "simple") -> str:
+        """Format penjelasan istilah"""
+        if level == "simple":
+            return f"**{term['name']}**\n\n{term['simple']}"
+        elif level == "detailed":
+            return f"**{term['name']}**\n\n{term['detailed']}"
+        elif level == "analogy":
+            return f"**{term['name']}** - Analogi:\n\n🎯 {term['analogy']}"
+        elif level == "example":
+            return f"**{term['name']}** - Contoh:\n\n💡 {term['example']}"
+        else:  # full
+            return (
+                f"**{term['name']}**\n\n"
+                f"📖 {term['simple']}\n\n"
+                f"🔍 {term['detailed']}\n\n"
+                f"🎯 Analogi: {term['analogy']}\n\n"
+                f"💡 Contoh: {term['example']}"
+            )

@@ -188,15 +188,15 @@ class ChatAgent:
         term_data = self.dictionary.get_term(term)
         
         if term_data:
-            return self.dictionary.format_term_explanation(term_data)
+            return self.dictionary.format_explanation(term_data, level="full")
         else:
             # Try search
-            results = self.dictionary.search_terms(term)
+            results = self.dictionary.search(term)
             if results:
                 lines = [f"🔍 Hasil pencarian untuk '{term}':\n"]
                 for result in results[:3]:
-                    lines.append(f"• {result['term']}")
-                    lines.append(f"  {result['definition']}\n")
+                    lines.append(f"• {result['name']}")
+                    lines.append(f"  {result['simple']}\n")
                 return "\n".join(lines)
             else:
                 return f"Maaf, saya tidak menemukan istilah '{term}' dalam kamus. Coba istilah lain atau tanya 'help' untuk bantuan."
