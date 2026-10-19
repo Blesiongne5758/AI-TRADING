@@ -106,7 +106,7 @@ class DatabaseManager:
                 )
             """)
 
-            # Tabel untuk posisi trading (paper trading)
+            # Tabel untuk posisi terbuka (open positions)
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS positions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,33 +116,44 @@ class DatabaseManager:
                     quantity REAL NOT NULL,
                     stop_loss REAL NOT NULL,
                     take_profit REAL NOT NULL,
-                    signal_id TEXT,
-                    opened_at TEXT NOT NULL,
-                    closed_at TEXT,
-                    exit_price REAL,
+                    entry_time INTEGER NOT NULL,
+                    status TEXT DEFAULT 'OPEN',
+                    close_price REAL,
+                    close_time INTEGER,
                     pnl REAL,
                     pnl_percent REAL,
-                    close_reason TEXT,
-                    status TEXT NOT NULL DEFAULT 'OPEN'
+                    exit_reason TEXT,
+                    UNIQUE(id)
                 )
             """)
 
-            # Tabel untuk riwayat trading (paper trading)
+            # Tabel untuk history semua transaksi
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS trades (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    position_id INTEGER,
                     symbol TEXT NOT NULL,
                     side TEXT NOT NULL,
-                    type TEXT NOT NULL,
+                    action TEXT NOT NULL,
                     price REAL NOT NULL,
                     quantity REAL NOT NULL,
-                    total REAL NOT NULL,
-                    pnl REAL,
-                    pnl_percent REAL,
-                    reason TEXT,
-                    timestamp TEXT NOT NULL,
-                    signal_id TEXT,
-                    position_id INTEGER
+                    timestamp INTEGER NOT NULL,
+                    fee REAL DEFAULT 0,
+                    notes TEXT,
+                    FOREIGN KEY (position_id) REFERENCES positions(id)
+                )
+            """)
+
+            # Tabel untuk portfolio snapshot (untuk tracking equity curve)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp INTEGER NOT NULL,
+                    total_balance REAL NOT NULL,
+                    available_balance REAL NOT NULL,
+                    unrealized_pnl REAL NOT NULL,
+                    realized_pnl REAL NOT NULL,
+                    total_positions INTEGER NOT NULL
                 )
             """)
 
@@ -155,15 +166,15 @@ class DatabaseManager:
                 )
             """)
 
-            # Index untuk mempercepat query
+            # Index untuk query cepat
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_candles_symbol_timeframe
                 ON candles(symbol, timeframe, timestamp)
             """)
 
             await db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_positions_symbol_status
-                ON positions(symbol, status)
+                CREATE INDEX IF NOT EXISTS idx_positions_status
+                ON positions(status)
             """)
 
             await db.execute("""
@@ -488,10 +499,10 @@ class DatabaseManager:
             cursor = await db.execute(
                 """
                 SELECT id, symbol, side, entry_price, quantity, stop_loss, take_profit,
-                       signal_id, opened_at, status
+                       entry_time, status
                 FROM positions
                 WHERE status = 'OPEN'
-                ORDER BY opened_at DESC
+                ORDER BY entry_time DESC
                 """
             )
             rows = await cursor.fetchall()
@@ -511,8 +522,8 @@ class DatabaseManager:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 """
-                SELECT id, symbol, side, type, price, quantity, total, pnl, pnl_percent,
-                       reason, timestamp, signal_id, position_id
+                SELECT id, position_id, symbol, side, action, price, quantity,
+                       timestamp, fee, notes
                 FROM trades
                 ORDER BY timestamp DESC
                 LIMIT ?
@@ -550,8 +561,8 @@ class DatabaseManager:
             cursor = await db.execute(
                 """
                 INSERT INTO positions 
-                (symbol, side, entry_price, quantity, stop_loss, take_profit, signal_id, opened_at, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (symbol, side, entry_price, quantity, stop_loss, take_profit, entry_time, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     position['symbol'],
@@ -560,9 +571,8 @@ class DatabaseManager:
                     position['quantity'],
                     position['stop_loss'],
                     position['take_profit'],
-                    position.get('signal_id'),
-                    position['opened_at'],
-                    position['status']
+                    int(datetime.now().timestamp() * 1000),
+                    position.get('status', 'OPEN')
                 )
             )
             await db.commit()
@@ -590,8 +600,8 @@ class DatabaseManager:
             await db.execute(
                 """
                 UPDATE positions
-                SET exit_price = ?, pnl = ?, pnl_percent = ?, 
-                    close_reason = ?, closed_at = ?, status = 'CLOSED'
+                SET close_price = ?, pnl = ?, pnl_percent = ?, 
+                    exit_reason = ?, close_time = ?, status = 'CLOSED'
                 WHERE id = ?
                 """,
                 (
@@ -599,7 +609,7 @@ class DatabaseManager:
                     pnl,
                     pnl_percent,
                     reason,
-                    datetime.now().isoformat(),
+                    int(datetime.now().timestamp() * 1000),
                     position_id
                 )
             )
@@ -619,27 +629,82 @@ class DatabaseManager:
             cursor = await db.execute(
                 """
                 INSERT INTO trades 
-                (symbol, side, type, price, quantity, total, pnl, pnl_percent, 
-                 reason, timestamp, signal_id, position_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (position_id, symbol, side, action, price, quantity, timestamp, fee, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    trade.get('position_id'),
                     trade['symbol'],
                     trade['side'],
-                    trade['type'],
+                    trade['action'],
                     trade['price'],
                     trade['quantity'],
-                    trade['total'],
-                    trade.get('pnl'),
-                    trade.get('pnl_percent'),
-                    trade.get('reason'),
-                    trade['timestamp'],
-                    trade.get('signal_id'),
-                    trade.get('position_id')
+                    int(datetime.now().timestamp() * 1000),
+                    trade.get('fee', 0),
+                    trade.get('notes')
                 )
             )
             await db.commit()
             return cursor.lastrowid
+
+    async def save_portfolio_snapshot(self, snapshot: Dict) -> int:
+        """
+        Menyimpan snapshot portfolio untuk tracking equity curve.
+        
+        Args:
+            snapshot: Snapshot dictionary dengan keys:
+                - total_balance
+                - available_balance
+                - unrealized_pnl
+                - realized_pnl
+                - total_positions
+        
+        Returns:
+            Snapshot ID
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                INSERT INTO portfolio_snapshots 
+                (timestamp, total_balance, available_balance, unrealized_pnl, realized_pnl, total_positions)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(datetime.now().timestamp() * 1000),
+                    snapshot['total_balance'],
+                    snapshot['available_balance'],
+                    snapshot['unrealized_pnl'],
+                    snapshot['realized_pnl'],
+                    snapshot['total_positions']
+                )
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    async def get_portfolio_snapshots(self, limit: int = 100) -> List[Dict]:
+        """
+        Mengambil snapshot portfolio untuk analisis equity curve.
+        
+        Args:
+            limit: Jumlah snapshot maksimum (default 100)
+        
+        Returns:
+            List of snapshot dictionaries
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """
+                SELECT timestamp, total_balance, available_balance, 
+                       unrealized_pnl, realized_pnl, total_positions
+                FROM portfolio_snapshots
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (limit,)
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
 
     async def update_balance(self, balance: float) -> None:
         """

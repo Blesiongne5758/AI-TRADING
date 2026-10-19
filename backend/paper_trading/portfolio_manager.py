@@ -89,14 +89,13 @@ class PortfolioManager:
             "quantity": quantity,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
-            "signal_id": signal_id,
-            "opened_at": datetime.now().isoformat(),
             "status": "OPEN"
         }
         
         # Save to database
         position_id = await self.db.create_position(position)
         position['id'] = position_id
+        position['entry_time'] = int(datetime.now().timestamp() * 1000)
         
         # Update local state
         self.positions[symbol] = position
@@ -107,15 +106,13 @@ class PortfolioManager:
         
         # Record trade
         trade = {
+            "position_id": position_id,
             "symbol": symbol,
             "side": side,
-            "type": "OPEN",
+            "action": "OPEN",
             "price": entry_price,
             "quantity": quantity,
-            "total": position_value,
-            "timestamp": datetime.now().isoformat(),
-            "signal_id": signal_id,
-            "position_id": position_id
+            "notes": f"Opened from signal {signal_id}" if signal_id else None
         }
         await self.db.create_trade(trade)
         self.trade_history.append(trade)
@@ -174,19 +171,22 @@ class PortfolioManager:
         self.current_balance += exit_value
         await self.db.update_balance(self.current_balance)
         
-        # Record close trade
+        # Record close trade (action sesuai reason)
+        action_map = {
+            "MANUAL": "CLOSE",
+            "STOP_LOSS": "STOP_LOSS",
+            "TAKE_PROFIT": "TAKE_PROFIT",
+            "SIGNAL": "CLOSE"
+        }
+        
         trade = {
+            "position_id": position['id'],
             "symbol": symbol,
             "side": position['side'],
-            "type": "CLOSE",
+            "action": action_map.get(reason, "CLOSE"),
             "price": exit_price,
             "quantity": position['quantity'],
-            "total": exit_value,
-            "pnl": pnl,
-            "pnl_percent": pnl_percent,
-            "reason": reason,
-            "timestamp": datetime.now().isoformat(),
-            "position_id": position['id']
+            "notes": f"Closed by {reason} | P&L: ${pnl:+,.2f} ({pnl_percent:+.2f}%)"
         }
         await self.db.create_trade(trade)
         self.trade_history.append(trade)
@@ -253,19 +253,32 @@ class PortfolioManager:
                 else:
                     unrealized_pnl += (position['entry_price'] - current_price) * position['quantity']
         
-        # Calculate total P&L
-        realized_pnl = sum(t.get('pnl', 0) for t in self.trade_history if t['type'] == 'CLOSE')
+        # Calculate total P&L from closed trades
+        realized_pnl = 0.0
+        closed_trades = []
+        for t in self.trade_history:
+            if t.get('action') in ['CLOSE', 'STOP_LOSS', 'TAKE_PROFIT']:
+                closed_trades.append(t)
+                # Calculate P&L from notes if available
+                notes = t.get('notes', '')
+                if 'P&L: $' in notes:
+                    try:
+                        pnl_str = notes.split('P&L: $')[1].split(' ')[0].replace('+', '').replace(',', '')
+                        realized_pnl += float(pnl_str)
+                    except:
+                        pass
+        
         total_pnl = realized_pnl + unrealized_pnl
         total_pnl_percent = (total_pnl / self.initial_balance) * 100
         
         # Calculate win rate
-        closed_trades = [t for t in self.trade_history if t['type'] == 'CLOSE']
-        winning_trades = [t for t in closed_trades if t.get('pnl', 0) > 0]
+        winning_trades = [t for t in closed_trades if 'P&L: $+' in t.get('notes', '')]
         win_rate = (len(winning_trades) / len(closed_trades) * 100) if closed_trades else 0
         
         return {
             "initial_balance": self.initial_balance,
             "current_balance": self.current_balance,
+            "available_balance": self.current_balance,
             "unrealized_pnl": unrealized_pnl,
             "realized_pnl": realized_pnl,
             "total_pnl": total_pnl,
@@ -277,6 +290,21 @@ class PortfolioManager:
             "positions": list(self.positions.values())
         }
 
+    async def save_snapshot(self):
+        """Simpan snapshot portfolio untuk tracking equity curve"""
+        summary = await self.get_portfolio_summary()
+        
+        snapshot = {
+            "total_balance": summary['current_balance'] + summary['unrealized_pnl'],
+            "available_balance": summary['available_balance'],
+            "unrealized_pnl": summary['unrealized_pnl'],
+            "realized_pnl": summary['realized_pnl'],
+            "total_positions": summary['open_positions']
+        }
+        
+        await self.db.save_portfolio_snapshot(snapshot)
+        logger.debug(f"📸 Portfolio snapshot saved: ${snapshot['total_balance']:,.2f}")
+
     async def print_portfolio_summary(self):
         """Print ringkasan portfolio ke console"""
         summary = await self.get_portfolio_summary()
@@ -286,6 +314,7 @@ class PortfolioManager:
         logger.info("="*70)
         logger.info(f"   Initial Balance: ${summary['initial_balance']:,.2f}")
         logger.info(f"   Current Balance: ${summary['current_balance']:,.2f}")
+        logger.info(f"   Available Balance: ${summary['available_balance']:,.2f}")
         logger.info(f"   Unrealized P&L: ${summary['unrealized_pnl']:+,.2f}")
         logger.info(f"   Realized P&L: ${summary['realized_pnl']:+,.2f}")
         logger.info(f"   Total P&L: ${summary['total_pnl']:+,.2f} ({summary['total_pnl_percent']:+.2f}%)")

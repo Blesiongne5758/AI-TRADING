@@ -140,7 +140,10 @@ class PaperTradingEngine:
             except Exception as e:
                 logger.error(f"❌ Error analyzing {symbol}: {e}")
         
-        # 4. Print summary
+        # 4. Save portfolio snapshot (untuk equity curve tracking)
+        await self.portfolio.save_snapshot()
+        
+        # 5. Print summary
         logger.info(f"\n{'='*70}")
         logger.info(f"📊 Cycle Summary: {trades_executed} trades executed")
         logger.info(f"{'='*70}")
