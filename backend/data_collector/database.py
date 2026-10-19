@@ -405,6 +405,17 @@ class DatabaseManager:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
+    async def get_ticker(self, symbol: str) -> Optional[Dict]:
+        """Mengambil data ticker terbaru"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM ticker WHERE symbol = ?",
+                (symbol,),
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
     async def get_latest_news(self, limit: int = 20) -> List[Dict]:
         """
         Mengambil berita terbaru untuk analisis sentimen.
