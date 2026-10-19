@@ -1,59 +1,102 @@
-import { useState } from 'react';
-import { Send } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
+import { Send, Bot, User } from 'lucide-react';
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState([
-    { role: 'ai', content: '👋 Halo! Saya AI Trading Assistant. Ada yang bisa saya bantu?' }
+    { role: 'assistant', content: '👋 Halo! Saya AI Trading Assistant. Ada yang bisa saya bantu?' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const messagesEndRef = useRef(null);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  useEffect(() => {
+    fetchSuggestions();
+  }, []);
 
-    const userMessage = { role: 'user', content: input };
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const fetchSuggestions = async () => {
+    try {
+      const res = await axios.get('http://localhost:8000/api/chat/suggestions');
+      setSuggestions(res.data.suggestions);
+    } catch (error) {
+      console.error('Error fetching suggestions:', error);
+    }
+  };
+
+  const sendMessage = async (messageText = input) => {
+    if (!messageText.trim()) return;
+
+    const userMessage = { role: 'user', content: messageText };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setLoading(true);
 
     try {
-      const response = await axios.post('/api/chat/message', { message: input });
-      const aiMessage = { role: 'ai', content: response.data.response };
-      setMessages(prev => [...prev, aiMessage]);
+      const res = await axios.post('http://localhost:8000/api/chat/message', {
+        message: messageText,
+      });
+
+      const assistantMessage = { role: 'assistant', content: res.data.response };
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error sending message:', error);
       setMessages(prev => [...prev, { 
-        role: 'ai', 
-        content: '❌ Maaf, terjadi kesalahan. Silakan coba lagi.' 
+        role: 'assistant', 
+        content: '❌ Maaf, terjadi kesalahan. Coba lagi nanti.' 
       }]);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-6 border-b border-slate-700">
-        <h1 className="text-2xl font-bold text-white">Chat AI</h1>
-        <p className="text-slate-400 mt-1">Tanya apa saja tentang trading</p>
+        <h1 className="text-3xl font-bold text-white">AI Chat Assistant</h1>
+        <p className="text-slate-400 mt-2">Tanya apa saja seputar trading dan keputusan bot</p>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 space-y-4">
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {messages.map((msg, idx) => (
-          <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+            {msg.role === 'assistant' && (
+              <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Bot className="w-5 h-5 text-white" />
+              </div>
+            )}
             <div className={`max-w-2xl rounded-lg p-4 ${
               msg.role === 'user' 
-                ? 'bg-primary-600 text-white' 
-                : 'bg-slate-800 border border-slate-700 text-white'
+                ? 'bg-primary-500 text-white' 
+                : 'bg-slate-800 text-slate-200'
             }`}>
-              <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+              <p className="whitespace-pre-wrap">{msg.content}</p>
             </div>
+            {msg.role === 'user' && (
+              <div className="w-8 h-8 bg-slate-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <User className="w-5 h-5 text-white" />
+              </div>
+            )}
           </div>
         ))}
         {loading && (
-          <div className="flex justify-start">
-            <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+          <div className="flex gap-3">
+            <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
+              <Bot className="w-5 h-5 text-white" />
+            </div>
+            <div className="bg-slate-800 rounded-lg p-4">
               <div className="flex gap-2">
                 <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
                 <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
@@ -62,26 +105,45 @@ export default function ChatInterface() {
             </div>
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
+      {/* Suggestions */}
+      {messages.length <= 1 && (
+        <div className="px-6 pb-4">
+          <p className="text-slate-400 text-sm mb-2">Saran pertanyaan:</p>
+          <div className="flex flex-wrap gap-2">
+            {suggestions.map((suggestion, idx) => (
+              <button
+                key={idx}
+                onClick={() => sendMessage(suggestion)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 text-sm"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input */}
       <div className="p-6 border-t border-slate-700">
         <div className="flex gap-3">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+            onKeyPress={handleKeyPress}
             placeholder="Ketik pertanyaan Anda..."
-            className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:border-primary-600"
+            className="flex-1 bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-700 focus:outline-none focus:border-primary-500"
             disabled={loading}
           />
           <button
-            onClick={sendMessage}
+            onClick={() => sendMessage()}
             disabled={loading || !input.trim()}
-            className="bg-primary-600 hover:bg-primary-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
+            className="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-5 h-5" />
-            Send
           </button>
         </div>
       </div>
