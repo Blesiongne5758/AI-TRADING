@@ -1,222 +1,127 @@
 """
 Risk Manager
-Validasi risiko sebelum eksekusi trade
+Memvalidasi setiap trade sebelum dieksekusi untuk mencegah risiko berlebihan
 """
 from typing import Dict, Optional
 from loguru import logger
 
 
 class RiskManager:
-    """Mengelola validasi risiko untuk paper trading"""
+    """Mengelola risiko dan memvalidasi trade"""
 
-    def __init__(
-        self,
-        max_risk_per_trade: float = 0.02,  # 2% max risk per trade
-        max_open_positions: int = 5,
-        max_position_size_percent: float = 0.10,  # 10% max position size
-        min_confidence_threshold: float = 0.60  # 60% min confidence
-    ):
-        """
-        Initialize risk manager
+    def __init__(self, portfolio_manager):
+        self.portfolio = portfolio_manager
         
-        Args:
-            max_risk_per_trade: Max risk per trade (default 2%)
-            max_open_positions: Max open positions (default 5)
-            max_position_size_percent: Max position size as % of portfolio (default 10%)
-            min_confidence_threshold: Min confidence to trade (default 60%)
-        """
-        self.max_risk_per_trade = max_risk_per_trade
-        self.max_open_positions = max_open_positions
-        self.max_position_size_percent = max_position_size_percent
-        self.min_confidence_threshold = min_confidence_threshold
-        
-        logger.info(
-            f"🛡️  Risk Manager initialized: "
-            f"Max risk/trade={max_risk_per_trade:.1%}, "
-            f"Max positions={max_open_positions}, "
-            f"Max size={max_position_size_percent:.1%}, "
-            f"Min confidence={min_confidence_threshold:.1%}"
-        )
+        # Parameter risiko (bisa disesuaikan)
+        self.max_risk_per_trade_percent = 2.0  # Max 2% dari portfolio per trade
+        self.max_open_positions = 5  # Max 5 posisi terbuka bersamaan
+        self.max_position_size_percent = 20.0  # Max 20% dari portfolio per posisi
+        self.max_daily_loss_percent = 5.0  # Stop trading jika loss > 5% per hari
+        self.min_confidence_threshold = 55.0  # Minimum confidence untuk trade
 
-    def validate_signal(self, signal: Dict, portfolio_summary: Dict) -> Dict:
+        # Tracking harian
+        self.daily_pnl = 0.0
+        self.daily_trades = 0
+
+    def validate_trade(self, signal: Dict, current_price: float) -> Dict:
         """
-        Validasi signal sebelum eksekusi
+        Validasi apakah trade boleh dieksekusi
         
-        Args:
-            signal: Trading signal dari analysis engine
-            portfolio_summary: Portfolio summary dari portfolio manager
-            
         Returns:
-            Dict dengan validation result:
             {
-                "valid": bool,
+                "approved": bool,
                 "reason": str,
-                "adjusted_quantity": float or None,
-                "adjusted_position_size": float or None
+                "adjusted_quantity": float (jika ada penyesuaian),
+                "position_size_usd": float
             }
         """
-        # Check 1: Confidence threshold
-        confidence = signal.get('confidence', 0)
-        if confidence < self.min_confidence_threshold * 100:
+        # === 1. Cek Confidence ===
+        if signal["confidence"] < self.min_confidence_threshold:
             return {
-                "valid": False,
-                "reason": f"Confidence terlalu rendah: {confidence:.1f}% < {self.min_confidence_threshold*100:.1f}%",
-                "adjusted_quantity": None,
-                "adjusted_position_size": None
+                "approved": False,
+                "reason": f"Confidence terlalu rendah: {signal['confidence']:.1f}% < {self.min_confidence_threshold}%",
             }
-        
-        # Check 2: Signal type
-        signal_type = signal.get('signal', 'NEUTRAL')
-        if signal_type not in ['STRONG_BUY', 'BUY', 'STRONG_SELL', 'SELL']:
+
+        # === 2. Cek Max Open Positions ===
+        if len(self.portfolio.open_positions) >= self.max_open_positions:
             return {
-                "valid": False,
-                "reason": f"Signal type tidak valid untuk trading: {signal_type}",
-                "adjusted_quantity": None,
-                "adjusted_position_size": None
+                "approved": False,
+                "reason": f"Max open positions tercapai: {len(self.portfolio.open_positions)}/{self.max_open_positions}",
             }
+
+        # === 3. Cek Duplicate Symbol ===
+        for pos in self.portfolio.open_positions.values():
+            if pos["symbol"] == signal["symbol"]:
+                return {
+                    "approved": False,
+                    "reason": f"Sudah ada posisi terbuka untuk {signal['symbol']}",
+                }
+
+        # === 4. Cek Daily Loss Limit ===
+        portfolio_summary = self.portfolio.get_portfolio_summary()
+        daily_loss_limit = self.portfolio.initial_balance * (self.max_daily_loss_percent / 100)
         
-        # Check 3: Max open positions
-        current_positions = portfolio_summary.get('open_positions', 0)
-        if current_positions >= self.max_open_positions:
+        if self.daily_pnl < -daily_loss_limit:
             return {
-                "valid": False,
-                "reason": f"Max open positions tercapai: {current_positions}/{self.max_open_positions}",
-                "adjusted_quantity": None,
-                "adjusted_position_size": None
+                "approved": False,
+                "reason": f"Daily loss limit tercapai: ${self.daily_pnl:.2f} (limit: -${daily_loss_limit:.2f})",
             }
+
+        # === 5. Hitung Position Size ===
+        suggested_actions = signal["suggested_actions"]
+        position_size_percent = suggested_actions["position_size_percent"]
         
-        # Check 4: Position already exists
-        symbol = signal.get('symbol', '')
-        positions = portfolio_summary.get('positions', [])
-        if any(pos['symbol'] == symbol for pos in positions):
+        # Batasi max position size
+        if position_size_percent > self.max_position_size_percent:
+            position_size_percent = self.max_position_size_percent
+            logger.warning(
+                f"⚠️  Position size dibatasi ke {self.max_position_size_percent}%"
+            )
+
+        # Hitung jumlah USD yang akan digunakan
+        position_size_usd = portfolio_summary["total_balance"] * (position_size_percent / 100)
+
+        # === 6. Cek Risk per Trade ===
+        max_risk_usd = portfolio_summary["total_balance"] * (self.max_risk_per_trade_percent / 100)
+        sl_distance_percent = suggested_actions["sl_distance_percent"]
+        risk_usd = position_size_usd * (sl_distance_percent / 100)
+
+        if risk_usd > max_risk_usd:
+            # Adjust position size agar sesuai max risk
+            adjusted_position_size_usd = max_risk_usd / (sl_distance_percent / 100)
+            logger.warning(
+                f"⚠️  Risk terlalu besar (${risk_usd:.2f} > ${max_risk_usd:.2f}), "
+                f"adjust position size ke ${adjusted_position_size_usd:.2f}"
+            )
+            position_size_usd = adjusted_position_size_usd
+
+        # === 7. Cek Available Balance ===
+        if not self.portfolio.can_open_position(position_size_usd):
             return {
-                "valid": False,
-                "reason": f"Posisi untuk {symbol} sudah terbuka",
-                "adjusted_quantity": None,
-                "adjusted_position_size": None
+                "approved": False,
+                "reason": f"Saldo tidak cukup: butuh ${position_size_usd:.2f}, tersedia ${self.portfolio.available_balance:.2f}",
             }
-        
-        # Check 5: Calculate position size based on risk
-        current_balance = portfolio_summary.get('current_balance', 0)
-        suggested_actions = signal.get('suggested_actions', {})
-        entry_price = suggested_actions.get('entry', 0)
-        stop_loss = suggested_actions.get('stop_loss', 0)
-        
-        if entry_price <= 0 or stop_loss <= 0:
-            return {
-                "valid": False,
-                "reason": "Entry price atau stop loss tidak valid",
-                "adjusted_quantity": None,
-                "adjusted_position_size": None
-            }
-        
-        # Calculate risk per unit
-        risk_per_unit = abs(entry_price - stop_loss)
-        
-        # Calculate max risk amount (2% of portfolio)
-        max_risk_amount = current_balance * self.max_risk_per_trade
-        
-        # Calculate quantity based on risk
-        quantity_by_risk = max_risk_amount / risk_per_unit if risk_per_unit > 0 else 0
-        
-        # Calculate max position size (10% of portfolio)
-        max_position_value = current_balance * self.max_position_size_percent
-        quantity_by_size = max_position_value / entry_price if entry_price > 0 else 0
-        
-        # Use minimum of both
-        adjusted_quantity = min(quantity_by_risk, quantity_by_size)
-        adjusted_position_value = adjusted_quantity * entry_price
-        adjusted_position_size_percent = (adjusted_position_value / current_balance) * 100 if current_balance > 0 else 0
-        
-        # Check if position is too small
-        if adjusted_position_value < 10:  # Min $10 position
-            return {
-                "valid": False,
-                "reason": f"Position size terlalu kecil: ${adjusted_position_value:.2f}",
-                "adjusted_quantity": None,
-                "adjusted_position_size": None
-            }
-        
-        logger.info(
-            f"✅ Signal validated: {symbol} {signal_type} "
-            f"(Confidence: {confidence:.1f}%, "
-            f"Position: ${adjusted_position_value:,.2f} / {adjusted_position_size_percent:.1f}%)"
-        )
-        
+
+        # === 8. Hitung Quantity ===
+        quantity = position_size_usd / current_price
+
+        # === APPROVED ===
         return {
-            "valid": True,
-            "reason": "Signal valid",
-            "adjusted_quantity": adjusted_quantity,
-            "adjusted_position_size": adjusted_position_size_percent
+            "approved": True,
+            "reason": "Trade approved",
+            "position_size_usd": round(position_size_usd, 2),
+            "quantity": round(quantity, 8),
+            "risk_usd": round(risk_usd, 2),
+            "risk_percent": round((risk_usd / portfolio_summary["total_balance"]) * 100, 2),
         }
 
-    def calculate_position_size(
-        self,
-        confidence: float,
-        current_balance: float,
-        entry_price: float,
-        stop_loss: float
-    ) -> Dict:
-        """
-        Calculate position size berdasarkan confidence dan risk
-        
-        Args:
-            confidence: Signal confidence (0-100)
-            current_balance: Current portfolio balance
-            entry_price: Entry price
-            stop_loss: Stop loss price
-            
-        Returns:
-            Dict dengan position sizing data
-        """
-        # Base position size on confidence
-        if confidence >= 75:
-            base_size_percent = 0.10  # 10%
-        elif confidence >= 60:
-            base_size_percent = 0.05  # 5%
-        else:
-            base_size_percent = 0.02  # 2%
-        
-        # Calculate risk per unit
-        risk_per_unit = abs(entry_price - stop_loss)
-        
-        # Calculate max risk amount
-        max_risk_amount = current_balance * self.max_risk_per_trade
-        
-        # Calculate quantity by risk
-        quantity_by_risk = max_risk_amount / risk_per_unit if risk_per_unit > 0 else 0
-        
-        # Calculate quantity by size
-        max_position_value = current_balance * base_size_percent
-        quantity_by_size = max_position_value / entry_price if entry_price > 0 else 0
-        
-        # Use minimum
-        adjusted_quantity = min(quantity_by_risk, quantity_by_size)
-        position_value = adjusted_quantity * entry_price
-        position_size_percent = (position_value / current_balance) * 100 if current_balance > 0 else 0
-        
-        # Calculate actual risk
-        actual_risk = risk_per_unit * adjusted_quantity
-        actual_risk_percent = (actual_risk / current_balance) * 100 if current_balance > 0 else 0
-        
-        return {
-            "quantity": adjusted_quantity,
-            "position_value": position_value,
-            "position_size_percent": position_size_percent,
-            "risk_amount": actual_risk,
-            "risk_percent": actual_risk_percent,
-            "confidence_tier": "HIGH" if confidence >= 75 else "MEDIUM" if confidence >= 60 else "LOW"
-        }
+    def record_trade_result(self, pnl: float):
+        """Catat hasil trade untuk tracking harian"""
+        self.daily_pnl += pnl
+        self.daily_trades += 1
 
-    def print_risk_summary(self, portfolio_summary: Dict):
-        """Print risk summary"""
-        logger.info("\n" + "="*70)
-        logger.info("🛡️  RISK MANAGEMENT SUMMARY")
-        logger.info("="*70)
-        logger.info(f"   Max Risk per Trade: {self.max_risk_per_trade:.1%}")
-        logger.info(f"   Max Open Positions: {self.max_open_positions}")
-        logger.info(f"   Max Position Size: {self.max_position_size_percent:.1%}")
-        logger.info(f"   Min Confidence: {self.min_confidence_threshold:.1%}")
-        logger.info(f"\n   Current Open Positions: {portfolio_summary.get('open_positions', 0)}/{self.max_open_positions}")
-        logger.info(f"   Current Balance: ${portfolio_summary.get('current_balance', 0):,.2f}")
-        logger.info("="*70 + "\n")
+    def reset_daily_stats(self):
+        """Reset statistik harian (panggil setiap hari)"""
+        logger.info(f"📊 Daily stats reset. PnL: ${self.daily_pnl:.2f}, Trades: {self.daily_trades}")
+        self.daily_pnl = 0.0
+        self.daily_trades = 0

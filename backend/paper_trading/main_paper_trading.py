@@ -65,6 +65,18 @@ class PaperTradingEngine:
         await self.portfolio.initialize()
         logger.info("✅ All components initialized")
 
+    def reset_daily_stats(self):
+        """
+        Reset statistik harian (panggil setiap hari atau saat start hari trading baru)
+        
+        Ini akan reset:
+        - daily_pnl tracking
+        - daily_trades count
+        
+        Dipanggil untuk mencegah daily loss limit carry over ke hari berikutnya
+        """
+        self.risk_manager.reset_daily_stats()
+
     async def analyze_and_trade(self, symbol: str) -> bool:
         """
         Analisis symbol dan execute trade jika ada signal
@@ -109,7 +121,9 @@ class PaperTradingEngine:
         
         # 6. Execute if actionable
         if signal['signal'] in ['STRONG_BUY', 'BUY', 'STRONG_SELL', 'SELL']:
-            result = await self.executor.execute_signal(signal)
+            # Get current price from technical analysis
+            current_price = tech_result['latest_price']
+            result = await self.executor.execute_signal(signal, current_price)
             return result is not None
         else:
             logger.info(f"⏭️  No actionable signal for {symbol}")
@@ -129,7 +143,7 @@ class PaperTradingEngine:
                 current_prices[symbol] = ticker['price']
         
         # 2. Check existing positions for SL/TP
-        if self.portfolio.positions:
+        if self.portfolio.open_positions:
             await self.executor.check_and_close_positions(current_prices)
         
         # 3. Analyze each symbol

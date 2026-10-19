@@ -34,12 +34,13 @@ class OrderExecutor:
         
         logger.info("⚡ Order Executor initialized")
 
-    async def execute_signal(self, signal: Dict) -> Optional[Dict]:
+    async def execute_signal(self, signal: Dict, current_price: float = None) -> Optional[Dict]:
         """
         Eksekusi trading signal
         
         Args:
             signal: Trading signal dari analysis engine
+            current_price: Harga saat ini (optional, default dari signal)
             
         Returns:
             Dict dengan execution result atau None jika gagal
@@ -56,16 +57,6 @@ class OrderExecutor:
             logger.info(f"⏭️  Skipping non-actionable signal: {signal_type}")
             return None
         
-        # Get portfolio summary (synchronous)
-        portfolio_summary = self.portfolio.get_portfolio_summary()
-        
-        # Validate signal with risk manager
-        validation = self.risk_manager.validate_signal(signal, portfolio_summary)
-        
-        if not validation['valid']:
-            logger.warning(f"❌ Signal validation failed: {validation['reason']}")
-            return None
-        
         # Determine side
         side = "long" if signal_type in ['STRONG_BUY', 'BUY'] else "short"
         
@@ -73,19 +64,27 @@ class OrderExecutor:
         entry_price = suggested_actions.get('entry', 0)
         stop_loss = suggested_actions.get('stop_loss', 0)
         take_profit = suggested_actions.get('take_profit', 0)
-        adjusted_quantity = validation['adjusted_quantity']
+        
+        # Use current_price if provided, otherwise use entry_price
+        if current_price is None:
+            current_price = entry_price
+        
+        # Validate trade with risk manager
+        validation = self.risk_manager.validate_trade(signal, current_price)
+        
+        if not validation['approved']:
+            logger.warning(f"❌ Trade validation failed: {validation['reason']}")
+            return None
+        
+        # Get validated quantity
+        quantity = validation['quantity']
         
         if entry_price <= 0 or stop_loss <= 0 or take_profit <= 0:
             logger.error("❌ Invalid execution parameters")
             return None
         
         # Calculate position value
-        position_value = entry_price * adjusted_quantity
-        
-        # Check if we have enough balance
-        if not self.portfolio.can_open_position(position_value):
-            logger.error(f"❌ Insufficient balance: ${self.portfolio.available_balance:,.2f} < ${position_value:,.2f}")
-            return None
+        position_value = entry_price * quantity
         
         # Reserve margin
         if not self.portfolio.reserve_margin(position_value):
@@ -98,7 +97,7 @@ class OrderExecutor:
             "symbol": symbol,
             "side": side,
             "entry_price": entry_price,
-            "quantity": adjusted_quantity,
+            "quantity": quantity,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
             "entry_time": entry_time
@@ -124,7 +123,7 @@ class OrderExecutor:
             "side": side,
             "action": "OPEN",
             "price": entry_price,
-            "quantity": adjusted_quantity,
+            "quantity": quantity,
             "timestamp": entry_time,
             "fee": 0,
             "notes": f"Opened from signal {signal_type} (confidence: {confidence:.1f}%)"
@@ -136,11 +135,13 @@ class OrderExecutor:
             "symbol": symbol,
             "side": side,
             "entry_price": entry_price,
-            "quantity": adjusted_quantity,
+            "quantity": quantity,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
             "position_value": position_value,
-            "position_size_percent": validation['adjusted_position_size'],
+            "position_size_usd": validation['position_size_usd'],
+            "risk_usd": validation['risk_usd'],
+            "risk_percent": validation['risk_percent'],
             "confidence": confidence,
             "signal_type": signal_type,
             "position_id": position_id
@@ -148,7 +149,7 @@ class OrderExecutor:
         
         logger.info(
             f"✅ Order executed: {side.upper()} {symbol} @ ${entry_price:,.2f} "
-            f"(Qty: {adjusted_quantity:.6f}, Value: ${position_value:,.2f})"
+            f"(Qty: {quantity:.8f}, Value: ${position_value:,.2f}, Risk: ${validation['risk_usd']:.2f})"
         )
         
         return result
@@ -237,6 +238,9 @@ class OrderExecutor:
         position_value = pos["entry_price"] * pos["quantity"]
         self.portfolio.release_margin(position_value, pnl)
         
+        # Record trade result untuk daily tracking
+        self.risk_manager.record_trade_result(pnl)
+        
         # Remove position from cache
         self.portfolio.remove_position(position_id)
         
@@ -263,19 +267,40 @@ class OrderExecutor:
         )
 
     def print_execution_summary(self):
-        """Print execution summary"""
+        """Print execution summary dengan daily stats"""
         summary = self.portfolio.get_portfolio_summary()
         
         logger.info("\n" + "="*70)
         logger.info("💼 PORTFOLIO SUMMARY")
         logger.info("="*70)
+        
+        # Balance Info
+        logger.info("\n💰 BALANCE:")
         logger.info(f"   Initial Balance: ${summary['initial_balance']:,.2f}")
         logger.info(f"   Available Balance: ${summary['available_balance']:,.2f}")
         logger.info(f"   Total Balance: ${summary['total_balance']:,.2f}")
         logger.info(f"   Total Return: {summary['total_return_percent']:+.2f}%")
+        
+        # P&L Info
+        logger.info("\n📈 PROFIT & LOSS:")
         logger.info(f"   Unrealized P&L: ${summary['unrealized_pnl']:+,.2f}")
         logger.info(f"   Realized P&L: ${summary['realized_pnl']:+,.2f}")
-        logger.info(f"   Open Positions: {summary['open_positions']}")
         logger.info(f"   Peak Balance: ${summary['peak_balance']:,.2f}")
         logger.info(f"   Max Drawdown: {summary['max_drawdown_percent']:.2f}%")
-        logger.info("="*70 + "\n")
+        
+        # Daily Stats
+        logger.info("\n📊 DAILY STATS:")
+        logger.info(f"   Daily P&L: ${self.risk_manager.daily_pnl:+,.2f}")
+        logger.info(f"   Daily Trades: {self.risk_manager.daily_trades}")
+        daily_loss_limit = self.portfolio.initial_balance * (self.risk_manager.max_daily_loss_percent / 100)
+        logger.info(f"   Daily Loss Limit: -${daily_loss_limit:.2f} ({self.risk_manager.max_daily_loss_percent}%)")
+        
+        # Risk Parameters
+        logger.info("\n🛡️  RISK PARAMETERS:")
+        logger.info(f"   Max Risk per Trade: {self.risk_manager.max_risk_per_trade_percent}%")
+        logger.info(f"   Max Open Positions: {self.risk_manager.max_open_positions}")
+        logger.info(f"   Max Position Size: {self.risk_manager.max_position_size_percent}%")
+        logger.info(f"   Min Confidence: {self.risk_manager.min_confidence_threshold}%")
+        logger.info(f"   Open Positions: {summary['open_positions']}/{self.risk_manager.max_open_positions}")
+        
+        logger.info("\n" + "="*70 + "\n")
