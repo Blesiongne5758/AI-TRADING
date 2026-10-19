@@ -166,7 +166,6 @@ pip install -r requirements.txt
 - `sqlalchemy` - Database ORM
 - `python-dotenv` - Environment variables
 - `loguru` - Logging
-- `pydantic` - Data validation
 
 **Note:** Library untuk sentiment analysis (`transformers`, `torch`) akan diinstall di Phase 2.
 

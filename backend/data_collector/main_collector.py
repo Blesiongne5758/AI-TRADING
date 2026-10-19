@@ -24,7 +24,13 @@ import sys
 from typing import List
 from loguru import logger
 
-from data_collector.config import settings, print_config
+from data_collector.config import (
+    TRADING_SYMBOLS,
+    TIMEFRAMES,
+    HISTORICAL_CANDLE_LIMIT,
+    print_config,
+    validate_config,
+)
 from data_collector.database import init_db, close_db
 from data_collector.binance_ws import BinanceDataCollector
 from data_collector.news_scraper import NewsScraper
@@ -92,14 +98,14 @@ class CollectorManager:
         logger.info("Fetching initial historical data...")
         
         try:
-            for symbol in settings.TRADING_SYMBOLS:
-                for timeframe in settings.TIMEFRAMES:
+            for symbol in TRADING_SYMBOLS:
+                for timeframe in TIMEFRAMES:
                     try:
                         # Fetch historical data
                         data = await self.binance_collector.fetch_historical_ohlcv(
                             symbol=symbol,
                             timeframe=timeframe,
-                            limit=500
+                            limit=HISTORICAL_CANDLE_LIMIT
                         )
                         
                         # Save to database

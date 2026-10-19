@@ -27,7 +27,14 @@ from datetime import datetime
 import json
 from loguru import logger
 
-from data_collector.config import settings
+from data_collector.config import (
+    BINANCE_API_KEY,
+    BINANCE_API_SECRET,
+    USE_TESTNET,
+    TRADING_SYMBOLS,
+    TIMEFRAMES,
+    HISTORICAL_CANDLE_LIMIT,
+)
 from data_collector.database import save_ohlcv_data
 
 
@@ -60,8 +67,8 @@ class BinanceDataCollector:
             symbols: List of trading pairs. Default dari config.
             timeframes: List of time intervals. Default dari config.
         """
-        self.symbols = symbols or settings.TRADING_SYMBOLS
-        self.timeframes = timeframes or settings.TIMEFRAMES
+        self.symbols = symbols or TRADING_SYMBOLS
+        self.timeframes = timeframes or TIMEFRAMES
         self.running = False
         self.exchange: Optional[ccxt.binance] = None
         
@@ -85,12 +92,12 @@ class BinanceDataCollector:
         try:
             # Create exchange instance
             self.exchange = ccxt.binance({
-                'apiKey': settings.BINANCE_API_KEY if not settings.BINANCE_TESTNET else '',
-                'secret': settings.BINANCE_API_SECRET if not settings.BINANCE_TESTNET else '',
+                'apiKey': BINANCE_API_KEY if not USE_TESTNET else '',
+                'secret': BINANCE_API_SECRET if not USE_TESTNET else '',
                 'enableRateLimit': True,
                 'options': {
                     'defaultType': 'spot',
-                    'test': settings.BINANCE_TESTNET,  # Use testnet if enabled
+                    'test': USE_TESTNET,  # Use testnet if enabled
                 }
             })
             

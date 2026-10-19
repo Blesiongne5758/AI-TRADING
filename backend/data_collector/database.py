@@ -45,7 +45,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 from loguru import logger
 
-from data_collector.config import settings
+from data_collector.config import DATABASE_PATH, LOG_LEVEL
 
 
 # ============================================
@@ -163,14 +163,12 @@ class TradingSignal(Base):
 # DATABASE ENGINE & SESSION
 # ============================================
 
-# Pastikan folder database ada
-os.makedirs(os.path.dirname(settings.DATABASE_PATH), exist_ok=True)
-
 # Create async engine
-DATABASE_URL = f"sqlite+aiosqlite:///{settings.DATABASE_PATH}"
+# DATABASE_PATH sudah Path object, convert ke string untuk URL
+DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_PATH}"
 engine = create_async_engine(
     DATABASE_URL,
-    echo=settings.DEBUG,  # Log SQL queries jika DEBUG=True
+    echo=False,  # Set True untuk debug SQL queries
     future=True,
 )
 

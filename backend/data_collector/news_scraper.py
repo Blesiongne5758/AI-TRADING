@@ -26,7 +26,11 @@ from datetime import datetime, timedelta
 from loguru import logger
 import re
 
-from data_collector.config import settings
+from data_collector.config import (
+    NEWS_FEEDS,
+    NEWS_FETCH_INTERVAL,
+    SENTIMENT_MODEL,
+)
 from data_collector.database import save_news_data
 
 
@@ -65,7 +69,7 @@ class SentimentAnalyzer:
             return
         
         try:
-            logger.info(f"Loading sentiment model: {settings.SENTIMENT_MODEL}")
+            logger.info(f"Loading sentiment model: {SENTIMENT_MODEL}")
             
             # Import transformers (lazy import untuk speed up startup)
             from transformers import pipeline
@@ -76,8 +80,8 @@ class SentimentAnalyzer:
                 None,
                 lambda: pipeline(
                     "sentiment-analysis",
-                    model=settings.SENTIMENT_MODEL,
-                    tokenizer=settings.SENTIMENT_MODEL,
+                    model=SENTIMENT_MODEL,
+                    tokenizer=SENTIMENT_MODEL,
                     max_length=512,
                     truncation=True
                 )
@@ -225,7 +229,9 @@ class NewsScraper:
         Args:
             sources: List of RSS feed URLs. Default dari config.
         """
-        self.sources = sources or settings.NEWS_SOURCES
+        # Extract URLs dari NEWS_FEEDS (list of dicts)
+        default_urls = [feed["url"] for feed in NEWS_FEEDS]
+        self.sources = sources or default_urls
         self.analyzer = SentimentAnalyzer()
         self.running = False
         
@@ -485,7 +491,7 @@ class NewsScraper:
                 )
                 
                 # Wait for next cycle
-                await asyncio.sleep(settings.NEWS_FETCH_INTERVAL)
+                await asyncio.sleep(NEWS_FETCH_INTERVAL)
                 
             except Exception as e:
                 logger.error(f"Error in news scraper loop: {e}")

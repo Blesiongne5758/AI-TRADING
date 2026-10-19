@@ -18,13 +18,22 @@ Cara penggunaan:
     
     # Atau import individual components
     from data_collector import BinanceDataCollector, NewsScraper
-    from data_collector.config import settings
+    from data_collector.config import TRADING_SYMBOLS, DATABASE_PATH
     from data_collector.database import init_db, save_ohlcv_data
 """
 
 from data_collector.binance_ws import BinanceDataCollector
 from data_collector.news_scraper import NewsScraper, SentimentAnalyzer
-from data_collector.config import settings
+from data_collector.config import (
+    TRADING_SYMBOLS,
+    TIMEFRAMES,
+    DATABASE_PATH,
+    BINANCE_API_KEY,
+    USE_TESTNET,
+    NEWS_FEEDS,
+    print_config,
+    validate_config,
+)
 from data_collector.database import (
     init_db, close_db,
     save_ohlcv_data, get_ohlcv_data,
@@ -36,7 +45,14 @@ __all__ = [
     'BinanceDataCollector',
     'NewsScraper',
     'SentimentAnalyzer',
-    'settings',
+    'TRADING_SYMBOLS',
+    'TIMEFRAMES',
+    'DATABASE_PATH',
+    'BINANCE_API_KEY',
+    'USE_TESTNET',
+    'NEWS_FEEDS',
+    'print_config',
+    'validate_config',
     'init_db',
     'close_db',
     'save_ohlcv_data',
