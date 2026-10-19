@@ -2,7 +2,7 @@
 
 Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar bisa belajar, meriset, dan memahami pasar crypto dengan aman melalui paper trading.
 
-## 📋 Fitur Fase 1
+## 📋 Fitur Fase 1: Data Collection
 
 - ✅ **Koneksi ke Binance REST API** - Data harga historis + real-time dari 5 simbol (BTC, ETH, SOL, BNB, XRP)
 - ✅ **6 Timeframes** - 1m, 5m, 15m, 1h, 4h, 1d
@@ -10,6 +10,14 @@ Sistem trading otomatis berbasis AI yang dirancang khusus untuk **pemula** agar 
 - ✅ **Database SQLite** - Penyimpanan data OHLCV, ticker, dan berita
 - ✅ **Auto-reconnect** - Koneksi otomatis jika terputus
 - ✅ **Logging** - Comprehensive logging untuk debugging
+
+## 📋 Fitur Fase 2: Analysis Engine
+
+- ✅ **Technical Indicators** - RSI, MACD, EMA, Bollinger Bands, Volume Analysis
+- ✅ **Sentiment Analysis** - Rule-based (Phase 2a) dengan opsi upgrade ke ML-based (Phase 2b)
+- ✅ **Signal Generation** - Menggabungkan technical + sentiment menjadi trading signals
+- ✅ **Risk Management** - Stop-loss, take-profit, position sizing
+- ✅ **Confidence Scoring** - Weighted voting system dari multiple indicators
 
 ## 📁 Struktur Proyek
 
@@ -23,6 +31,12 @@ ai-trading-agent/
 │   │   ├── binance_ws.py      ← Binance REST API collector
 │   │   ├── news_scraper.py    ← News scraper (RSS)
 │   │   └── main_collector.py  ← Entry point
+│   ├── analysis/
+│   │   ├── __init__.py
+│   │   ├── technical_indicators.py  ← RSI, MACD, EMA, BB, Volume
+│   │   ├── sentiment_analysis.py    ← Analisis sentimen berita
+│   │   ├── signal_generator.py      ← Gabungkan → Signal + Confidence
+│   │   └── main_analysis.py         ← Entry point untuk testing
 │   ├── .env.example           ← Template konfigurasi
 │   └── requirements.txt       ← Python dependencies
 ├── database/                  ← SQLite database (auto-created)
@@ -38,7 +52,7 @@ ai-trading-agent/
 ```bash
 mkdir ai-trading-agent
 cd ai-trading-agent
-mkdir -p backend/data_collector database
+mkdir -p backend/data_collector backend/analysis database
 ```
 
 ### 2. Buat virtual environment (recommended)
@@ -63,7 +77,7 @@ cp .env.example .env
 # Dapatkan dari: https://testnet.binance.vision/
 ```
 
-### 5. Jalankan aplikasi
+### 5. Jalankan Data Collector (Fase 1)
 ```bash
 python -m data_collector.main_collector
 ```
@@ -82,6 +96,38 @@ python -m data_collector.main_collector
 10:00:08 | INFO     | 🔄 Starting news scraper (interval: 900s)
 10:00:09 | INFO     | 📰 Fetching news from all sources...
 10:00:10 | INFO     | 📰 CoinDesk: 20 articles
+```
+
+### 6. Jalankan Analysis Engine (Fase 2)
+```bash
+# Biarkan data collector berjalan di terminal pertama
+# Buka terminal baru untuk analysis
+python -m analysis.main_analysis
+```
+
+**Output yang diharapkan:**
+```
+======================================================================
+🔍 Analyzing BTC/USDT [1h]
+======================================================================
+📊 Loaded 500 candles dan 60 news articles
+
+📈 SIGNAL: BUY
+🎯 Confidence: 75%
+💰 Current Price: $42,300.75
+
+📋 Reasons:
+   1. Strong buy signal (score: +0.65)
+   2. RSI oversold (28.5)
+   3. MACD bullish crossover
+   4. EMA alignment bullish
+   5. News sentiment bullish (+0.72)
+
+🛡️  Risk Management:
+   Stop Loss: $41,454.74
+   Take Profit: $44,415.79
+   Risk/Reward Ratio: 2.50
+   Position Size: 10.0% of portfolio
 ```
 
 ## 📊 Data yang Dikumpulkan
@@ -129,30 +175,54 @@ BINANCE_API_SECRET=your_api_secret_here
 
 ## 📖 Penjelasan Modul
 
-### 1. `config.py` - Konfigurasi Global
+### Data Collection (Fase 1)
+
+#### 1. `config.py` - Konfigurasi Global
 Menyimpan semua konfigurasi aplikasi menggunakan `python-dotenv`.
 
-### 2. `database.py` - DatabaseManager
+#### 2. `database.py` - DatabaseManager
 Mengelola SQLite database dengan aiosqlite (async).
 
-### 3. `binance_ws.py` - Binance REST API Collector
+#### 3. `binance_ws.py` - Binance REST API Collector
 Mengambil data harga dari Binance (historical + real-time).
 
-### 4. `news_scraper.py` - News Scraper
+#### 4. `news_scraper.py` - News Scraper
 Mengambil berita crypto dari RSS feeds.
 
-### 5. `main_collector.py` - Entry Point
+#### 5. `main_collector.py` - Entry Point
 Menjalankan semua collectors secara bersamaan.
 
-## 🎯 Next Steps (Phase 2)
+### Analysis Engine (Fase 2)
 
-- [ ] Analysis Engine (RSI, MACD, EMA, Bollinger Bands)
-- [ ] Sentiment Analysis dengan FinBERT AI
-- [ ] Signal Generation
-- [ ] Paper Trading Engine
-- [ ] Risk Management
-- [ ] XAI Module (Explainable AI)
-- [ ] Telegram Notifications
+#### 6. `technical_indicators.py` - Technical Analysis
+Menghitung indikator teknikal:
+- **RSI** (Relative Strength Index) - Mengukur overbought/oversold
+- **MACD** (Moving Average Convergence Divergence) - Mengukur momentum
+- **EMA** (Exponential Moving Average) - Mengukur trend
+- **Bollinger Bands** - Mengukur volatilitas
+- **Volume Analysis** - Mengkonfirmasi strength pergerakan
+
+#### 7. `sentiment_analysis.py` - Sentiment Analysis
+Menganalisis sentimen berita crypto:
+- **Phase 2a**: Rule-based (keyword matching, no ML dependencies)
+- **Phase 2b**: ML-based (FinBERT, optional upgrade)
+
+#### 8. `signal_generator.py` - Signal Generation
+Menggabungkan technical + sentiment menjadi trading signal:
+- Weighted voting system (70% technical, 30% sentiment)
+- Confidence scoring (0-100%)
+- Risk management (stop-loss, take-profit, position sizing)
+
+#### 9. `main_analysis.py` - Entry Point
+Entry point untuk testing analysis engine.
+
+## 🎯 Next Steps (Phase 3)
+
+- [ ] Paper Trading Engine (virtual portfolio, order execution)
+- [ ] XAI Module (Explainable AI, chat interface)
+- [ ] Telegram Notifications (trade alerts, daily reports)
+- [ ] Backtesting Engine (test strategies with historical data)
+- [ ] Frontend Dashboard (React + TradingView charts)
 
 ## ⚠️ Disclaimer
 

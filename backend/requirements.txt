@@ -1,6 +1,6 @@
 # AI Trading Agent - Backend Dependencies
 # Python 3.11+
-# Phase 1: Data Collection Only
+# Phase 2: Analysis Engine
 
 # ============================================
 # Library Trading & Data
@@ -16,8 +16,14 @@ pandas==2.1.4
 numpy==1.26.2
 
 # ============================================
+# Technical Analysis
+# ============================================
+ta==0.11.0
+
+# ============================================
 # Sentiment Analysis (untuk Fase 2, install nanti)
-# Uncomment baris berikut saat ready untuk Fase 2:
+# ============================================
+# Uncomment baris berikut saat ready untuk ML-based sentiment:
 # transformers==4.36.2
 # torch==2.1.2
 
