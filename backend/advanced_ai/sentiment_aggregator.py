@@ -1,354 +1,257 @@
 """
 Sentiment Aggregator
-Gabungkan sentiment dari semua sumber (news, social media, FinBERT)
+Menggabungkan semua sumber sentimen menjadi satu skor final
 """
 import asyncio
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 from loguru import logger
+
 from .finbert_analyzer import FinBERTAnalyzer
 from .news_api_client import NewsAPIClient
-from .twitter_analyzer import TwitterAnalyzer
+from .twitter_analyzer import SocialMediaAnalyzer
 from .pump_dump_detector import PumpDumpDetector
 from .cache_manager import cache
 
 
 class SentimentAggregator:
     """
-    Aggregate sentiment from multiple sources
-    
-    Features:
-    - Combine news sentiment
-    - Combine social media sentiment
-    - Weighted scoring
-    - Source reliability scoring
-    - Conflict detection
-    - Final sentiment recommendation
+    Menggabungkan sentimen dari multiple sources dengan weighted scoring
     """
-    
+
+    # Bobot setiap sumber (total = 1.0)
+    SOURCE_WEIGHTS = {
+        "news_professional": 0.30,  # CryptoPanic, NewsAPI
+        "social_influencers": 0.25,  # Twitter influencers
+        "social_reddit": 0.15,  # Reddit posts
+        "community_votes": 0.15,  # CryptoPanic community votes
+        "on_chain": 0.15,  # Whale movements (future)
+    }
+
     def __init__(self):
-        """Initialize sentiment aggregator"""
         self.finbert = FinBERTAnalyzer()
         self.news_client = NewsAPIClient()
-        self.twitter_analyzer = TwitterAnalyzer(self.finbert)
+        self.social_analyzer = SocialMediaAnalyzer()
         self.pump_detector = PumpDumpDetector()
-        
-        # Source weights (can be adjusted)
-        self.source_weights = {
-            "news": 0.4,           # 40% weight
-            "twitter": 0.3,        # 30% weight
-            "reddit": 0.2,         # 20% weight
-            "telegram": 0.1        # 10% weight
-        }
-        
-        logger.info("🔄 Sentiment Aggregator initialized")
-    
-    async def initialize(self):
-        """Initialize all components"""
-        await self.finbert.initialize()
-        await self.news_client.initialize()
-        await self.twitter_analyzer.initialize()
-        
-        logger.info("✅ Sentiment aggregator initialized")
-    
-    async def close(self):
-        """Close all components"""
-        await self.news_client.close()
-        await self.twitter_analyzer.close()
-        
-        logger.info("🔒 Sentiment aggregator closed")
-    
-    async def aggregate_sentiment(
+
+    async def analyze_symbol(
         self,
-        currencies: List[str] = ["BTC", "ETH"],
-        include_news: bool = True,
-        include_social: bool = True,
-        include_pump_detection: bool = True
+        symbol: str,
+        currency_code: str = None,
+        include_pump_detection: bool = True,
     ) -> Dict:
         """
-        Aggregate sentiment from all sources
+        Analisis sentimen lengkap untuk satu simbol
         
         Args:
-            currencies: List of currency codes
-            include_news: Include news sentiment
-            include_social: Include social media sentiment
-            include_pump_detection: Include pump & dump detection
+            symbol: Trading pair (misal: "BTC/USDT")
+            currency_code: Kode mata uang (misal: "BTC")
+            include_pump_detection: Aktifkan deteksi pump/dump
             
         Returns:
-            Aggregated sentiment results
+            Dict dengan aggregated sentiment + breakdown
         """
-        logger.info(f"🔄 Aggregating sentiment for {currencies}...")
-        
-        # Check cache
-        cache_key = {
-            "currencies": currencies,
-            "include_news": include_news,
-            "include_social": include_social
-        }
-        
-        cached = await cache.get("sentiment", cache_key)
-        if cached:
-            logger.info("✅ Sentiment cache hit")
-            return cached
-        
-        results = {
-            "currencies": currencies,
-            "timestamp": datetime.now().isoformat(),
-            "sources": {},
-            "overall_score": 0.0,
-            "overall_label": "NEUTRAL",
-            "confidence": 0.0,
-            "conflicts": [],
-            "pump_dump_warning": False
-        }
-        
-        weighted_scores = []
-        
-        # ============================================
-        # 1. News Sentiment
-        # ============================================
-        if include_news:
-            logger.info("📰 Analyzing news sentiment...")
-            
-            news_articles = await self.news_client.fetch_all(
-                currencies=currencies,
-                limit_per_source=20
-            )
-            
-            if news_articles:
-                news_sentiment = self.finbert.analyze_news_batch(news_articles)
-                
-                results["sources"]["news"] = {
-                    "score": news_sentiment["overall_score"],
-                    "label": news_sentiment["overall_label"],
-                    "article_count": news_sentiment["total_articles"],
-                    "weight": self.source_weights["news"]
-                }
-                
-                weighted_scores.append(
-                    news_sentiment["overall_score"] * self.source_weights["news"]
-                )
-                
-                logger.info(f"   News: {news_sentiment['overall_label']} ({news_sentiment['overall_score']:+.3f})")
-        
-        # ============================================
-        # 2. Social Media Sentiment
-        # ============================================
-        if include_social:
-            logger.info("📱 Analyzing social media sentiment...")
-            
-            query = " OR ".join(currencies)
-            social_posts = await self.twitter_analyzer.fetch_all_social_media(
-                query=query,
-                limit_per_platform=20
-            )
-            
-            if social_posts:
-                # Group by platform
-                platform_posts = {}
-                for post in social_posts:
-                    platform = post.get("platform", "unknown")
-                    if platform not in platform_posts:
-                        platform_posts[platform] = []
-                    platform_posts[platform].append(post)
-                
-                # Analyze each platform
-                for platform, posts in platform_posts.items():
-                    sentiment = await self.twitter_analyzer.analyze_sentiment(posts)
-                    
-                    weight = self.source_weights.get(platform, 0.1)
-                    
-                    results["sources"][platform] = {
-                        "score": sentiment["overall_score"],
-                        "label": sentiment["overall_label"],
-                        "post_count": sentiment["total_posts"],
-                        "weight": weight
-                    }
-                    
-                    weighted_scores.append(sentiment["overall_score"] * weight)
-                    
-                    logger.info(f"   {platform.capitalize()}: {sentiment['overall_label']} ({sentiment['overall_score']:+.3f})")
-        
-        # ============================================
-        # 3. Pump & Dump Detection
-        # ============================================
-        if include_pump_detection:
-            logger.info("🚨 Checking for pump & dump patterns...")
-            
-            # Get hype analysis from social media
-            if social_posts:
-                hype_analysis = self.pump_detector.analyze_social_media_hype(
-                    social_posts,
-                    time_window_minutes=60
-                )
-                
-                results["pump_dump_warning"] = hype_analysis["risk"] in ["HIGH", "VERY_HIGH"]
-                results["hype_analysis"] = hype_analysis
-                
-                if results["pump_dump_warning"]:
-                    logger.warning(f"   🚨 PUMP & DUMP WARNING: {hype_analysis['risk']} risk detected!")
-        
-        # ============================================
-        # 4. Calculate Overall Sentiment
-        # ============================================
-        if weighted_scores:
-            overall_score = sum(weighted_scores) / sum(self.source_weights.values())
-            
-            # Determine label
-            if overall_score > 0.15:
-                overall_label = "POSITIVE"
-            elif overall_score < -0.15:
-                overall_label = "NEGATIVE"
-            else:
-                overall_label = "NEUTRAL"
-            
-            # Calculate confidence (based on agreement between sources)
-            if len(weighted_scores) > 1:
-                # Check if sources agree
-                all_positive = all(s > 0 for s in weighted_scores)
-                all_negative = all(s < 0 for s in weighted_scores)
-                
-                if all_positive or all_negative:
-                    confidence = 90.0  # High confidence
-                elif len(set(s > 0 for s in weighted_scores)) == 2:
-                    confidence = 50.0  # Mixed signals
-                else:
-                    confidence = 70.0  # Moderate confidence
-            else:
-                confidence = 60.0  # Single source
-            
-            results["overall_score"] = overall_score
-            results["overall_label"] = overall_label
-            results["confidence"] = confidence
-            
-            # Detect conflicts
-            if len(weighted_scores) > 1:
-                positive_sources = [name for name, data in results["sources"].items() if data["score"] > 0.1]
-                negative_sources = [name for name, data in results["sources"].items() if data["score"] < -0.1]
-                
-                if positive_sources and negative_sources:
-                    results["conflicts"].append({
-                        "type": "SOURCE_CONFLICT",
-                        "positive_sources": positive_sources,
-                        "negative_sources": negative_sources,
-                        "message": f"Conflicting signals: {', '.join(positive_sources)} vs {', '.join(negative_sources)}"
-                    })
-        
-        # Cache results
-        await cache.set("sentiment", results, 300, cache_key)  # 5 min cache
-        
-        logger.info(f"\n✅ Sentiment aggregation complete:")
-        logger.info(f"   Overall: {results['overall_label']} ({results['overall_score']:+.3f})")
-        logger.info(f"   Confidence: {results['confidence']:.1f}%")
-        logger.info(f"   Sources: {len(results['sources'])}")
-        
-        if results["conflicts"]:
-            logger.warning(f"   ⚠️  Conflicts detected: {len(results['conflicts'])}")
-        
-        if results["pump_dump_warning"]:
-            logger.warning(f"   🚨 Pump & dump warning!")
-        
-        return results
-    
-    def get_sentiment_impact(self, sentiment_score: float) -> Dict:
-        """
-        Determine impact level of sentiment
-        
-        Args:
-            sentiment_score: Score from -1 to +1
-            
-        Returns:
-            Impact analysis
-        """
-        abs_score = abs(sentiment_score)
-        
-        if abs_score < 0.15:
-            return {
-                "impact": "LOW",
-                "weight": 0.1,
-                "reason": "Sentimen netral, tidak mempengaruhi keputusan"
-            }
-        elif abs_score < 0.4:
-            return {
-                "impact": "MODERATE",
-                "weight": 0.25,
-                "reason": "Sentimen cukup kuat, jadi pertimbangan tambahan"
-            }
-        elif abs_score < 0.7:
-            return {
-                "impact": "HIGH",
-                "weight": 0.4,
-                "reason": "Sentimen kuat, bobot signifikan dalam keputusan"
-            }
+        if currency_code is None:
+            currency_code = symbol.split("/")[0]
+
+        logger.info(f"🎯 Analyzing sentiment for {symbol}")
+
+        # === 1. Fetch semua data secara paralel ===
+        news_task = self.news_client.fetch_all_news(
+            currencies=[currency_code], limit_per_source=30
+        )
+        social_task = self.social_analyzer.fetch_all_social(
+            crypto_query=currency_code.lower(),
+            monitor_influencers=True,
+        )
+
+        news_articles, social_data = await asyncio.gather(
+            news_task, social_task
+        )
+
+        # === 2. Analisis sentimen dengan FinBERT ===
+        all_texts = []
+        source_map = {}  # Track source untuk setiap text
+
+        # News texts
+        for article in news_articles:
+            text = f"{article.get('title', '')}. {article.get('summary', '')}"
+            all_texts.append(text)
+            source_map[len(all_texts)-1] = article.get("source", "unknown")
+
+        # Social texts
+        for source_name, posts in social_data.items():
+            for post in posts:
+                text = f"{post.get('title', '')}. {post.get('text', '')}"
+                all_texts.append(text)
+                source_map[len(all_texts)-1] = f"social/{source_name}"
+
+        # Batch analyze dengan FinBERT
+        if all_texts:
+            sentiment_results = await self.finbert.analyze_batch(all_texts)
         else:
-            return {
-                "impact": "VERY_HIGH",
-                "weight": 0.5,
-                "reason": "Sentimen sangat kuat (breaking news?), bobot maksimal"
+            sentiment_results = []
+
+        # === 3. Aggregate by source ===
+        source_scores = {
+            "news_professional": [],
+            "social_influencers": [],
+            "social_reddit": [],
+            "community_votes": [],
+        }
+
+        for i, sentiment in enumerate(sentiment_results):
+            source = source_map.get(i, "unknown")
+            score = sentiment["score"]
+
+            if source.startswith("cryptopanic"):
+                source_scores["news_professional"].append(score)
+            elif source.startswith("newsapi") or source.startswith("gnews"):
+                source_scores["news_professional"].append(score)
+            elif source.startswith("twitter") or source.startswith("social/influencers"):
+                source_scores["social_influencers"].append(score)
+            elif source.startswith("reddit") or source.startswith("social/reddit"):
+                source_scores["social_reddit"].append(score)
+
+        # Tambahkan community votes dari CryptoPanic
+        for article in news_articles:
+            if article.get("source") == "cryptopanic":
+                votes = article.get("community_votes", {})
+                pos = votes.get("positive", 0)
+                neg = votes.get("negative", 0)
+                total = pos + neg
+                if total > 0:
+                    community_score = (pos - neg) / total  # -1 to +1
+                    source_scores["community_votes"].append(community_score)
+
+        # === 4. Hitung weighted final score ===
+        weighted_scores = []
+        source_breakdown = {}
+
+        for source_name, scores in source_scores.items():
+            if scores:
+                avg_score = sum(scores) / len(scores)
+                weight = self.SOURCE_WEIGHTS.get(source_name, 0)
+                weighted_scores.append(avg_score * weight)
+                source_breakdown[source_name] = {
+                    "score": round(avg_score, 3),
+                    "weight": weight,
+                    "weighted_contribution": round(avg_score * weight, 3),
+                    "sample_size": len(scores),
+                }
+            else:
+                source_breakdown[source_name] = {
+                    "score": 0.0,
+                    "weight": self.SOURCE_WEIGHTS.get(source_name, 0),
+                    "weighted_contribution": 0.0,
+                    "sample_size": 0,
+                }
+
+        final_score = sum(weighted_scores) if weighted_scores else 0.0
+
+        # Normalize ke -1 sampai +1
+        total_weight = sum(self.SOURCE_WEIGHTS.values())
+        if total_weight > 0:
+            final_score = final_score / total_weight
+
+        # === 5. Tentukan label ===
+        if final_score > 0.2:
+            label = "BULLISH"
+        elif final_score < -0.2:
+            label = "BEARISH"
+        else:
+            label = "NEUTRAL"
+
+        # === 6. Confidence score ===
+        total_samples = sum(s["sample_size"] for s in source_breakdown.values())
+        if total_samples > 100:
+            confidence = 90
+        elif total_samples > 50:
+            confidence = 75
+        elif total_samples > 20:
+            confidence = 60
+        elif total_samples > 5:
+            confidence = 40
+        else:
+            confidence = 20
+
+        # === 7. Pump & dump detection ===
+        pump_dump_analysis = None
+        if include_pump_detection:
+            # Note: butuh price_data dan volume_data dari external source
+            # Di sini kita skip jika tidak ada data
+            pump_dump_analysis = {
+                "status": "requires_price_data",
+                "message": "Pump detection membutuhkan price & volume data",
             }
-    
-    def format_summary(self, results: Dict) -> str:
-        """
-        Format sentiment results as summary string
-        
-        Args:
-            results: Aggregated sentiment results
-            
-        Returns:
-            Formatted summary
-        """
-        lines = []
-        
-        lines.append("=" * 70)
-        lines.append("📊 SENTIMENT ANALYSIS SUMMARY")
-        lines.append("=" * 70)
-        lines.append(f"Currencies: {', '.join(results['currencies'])}")
-        lines.append(f"Timestamp: {results['timestamp']}")
-        lines.append("")
-        
-        # Overall sentiment
-        emoji = "🟢" if results["overall_label"] == "POSITIVE" else "🔴" if results["overall_label"] == "NEGATIVE" else "⚪"
-        lines.append(f"{emoji} OVERALL SENTIMENT: {results['overall_label']}")
-        lines.append(f"   Score: {results['overall_score']:+.3f}")
-        lines.append(f"   Confidence: {results['confidence']:.1f}%")
-        lines.append("")
-        
-        # Source breakdown
-        lines.append("📰 SOURCE BREAKDOWN:")
-        for source, data in results["sources"].items():
-            source_emoji = "🟢" if data["label"] == "POSITIVE" else "🔴" if data["label"] == "NEGATIVE" else "⚪"
-            lines.append(f"   {source_emoji} {source.capitalize()}: {data['label']} ({data['score']:+.3f})")
-            lines.append(f"      Articles/Posts: {data['post_count' if 'post_count' in data else 'article_count']}")
-            lines.append(f"      Weight: {data['weight']:.0%}")
-        lines.append("")
-        
-        # Conflicts
-        if results["conflicts"]:
-            lines.append("⚠️  CONFLICTS DETECTED:")
-            for conflict in results["conflicts"]:
-                lines.append(f"   • {conflict['message']}")
-            lines.append("")
-        
-        # Pump & dump warning
-        if results["pump_dump_warning"]:
-            lines.append("🚨 PUMP & DUMP WARNING:")
-            lines.append(f"   Risk Level: {results['hype_analysis']['risk']}")
-            lines.append(f"   Hype Score: {results['hype_analysis']['hype_score']:.1f}")
-            lines.append(f"   Recommendation: AVOID TRADING")
-            lines.append("")
-        
-        # Impact
-        impact = self.get_sentiment_impact(results["overall_score"])
-        lines.append("💡 TRADING IMPACT:")
-        lines.append(f"   Impact Level: {impact['impact']}")
-        lines.append(f"   Weight in Decision: {impact['weight']:.0%}")
-        lines.append(f"   Reason: {impact['reason']}")
-        lines.append("")
-        
-        lines.append("=" * 70)
-        
-        return "\n".join(lines)
 
+        # === 8. Top articles/posts ===
+        top_positive = sorted(
+            [
+                {**sentiment_results[i], "text": all_texts[i][:200], "source": source_map.get(i)}
+                for i in range(len(sentiment_results))
+                if sentiment_results[i]["score"] > 0.5
+            ],
+            key=lambda x: x["score"],
+            reverse=True,
+        )[:5]
 
-# Global instance
-sentiment_aggregator = SentimentAggregator()
+        top_negative = sorted(
+            [
+                {**sentiment_results[i], "text": all_texts[i][:200], "source": source_map.get(i)}
+                for i in range(len(sentiment_results))
+                if sentiment_results[i]["score"] < -0.5
+            ],
+            key=lambda x: x["score"],
+        )[:5]
+
+        result = {
+            "symbol": symbol,
+            "currency": currency_code,
+            "timestamp": datetime.now().isoformat(),
+            "final_score": round(final_score, 3),
+            "label": label,
+            "confidence": confidence,
+            "total_samples": total_samples,
+            "source_breakdown": source_breakdown,
+            "top_positive": top_positive,
+            "top_negative": top_negative,
+            "pump_dump_analysis": pump_dump_analysis,
+            "raw_counts": {
+                "news_articles": len(news_articles),
+                "social_posts": sum(len(v) for v in social_data.values()),
+                "total_analyzed": len(sentiment_results),
+            },
+        }
+
+        logger.info(
+            f"✅ {symbol} sentiment: {label} ({final_score:+.3f}) "
+            f"with {confidence}% confidence from {total_samples} samples"
+        )
+
+        return result
+
+    async def analyze_all_symbols(
+        self, symbols: List[str]
+    ) -> List[Dict]:
+        """Analisis sentiment untuk multiple symbols"""
+        tasks = [self.analyze_symbol(symbol) for symbol in symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        valid_results = []
+        for r in results:
+            if isinstance(r, Dict):
+                valid_results.append(r)
+            elif isinstance(r, Exception):
+                logger.error(f"Analysis error: {r}")
+
+        return valid_results
+
+    async def close(self):
+        """Cleanup"""
+        await self.news_client.close()
+        await self.social_analyzer.close()
+
+    def get_source_weights(self) -> Dict:
+        """Info bobot setiap sumber"""
+        return self.SOURCE_WEIGHTS
