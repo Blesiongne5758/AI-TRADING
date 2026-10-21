@@ -15,13 +15,29 @@ Modul backtesting untuk menguji strategi trading AI dengan data historis.
 ```
 backtesting/
 ├── __init__.py                    # Module exports
-├── data_loader.py                 # Load & validate historical data
+├── data_loader.py                 # Load dari database lokal
+├── backtest_data_loader.py        # Load dari Binance API (long-term)
 ├── strategy_runner.py             # Execute strategy candle-by-candle
 ├── performance_metrics.py         # Calculate performance metrics
 ├── report_generator.py            # Generate visual reports
-├── optimizer.py                   # Grid search optimization
-└── main_backtest.py               # Entry point
+├── optimizer.py                   # Grid search & Bayesian optimization
+└── main_backtest.py               # Entry point dengan CLI
 ```
+
+## 📊 Data Loaders
+
+### DataLoader (Local Database)
+- Memuat data dari database SQLite lokal
+- Cepat untuk data pendek (< 90 hari)
+- Termasuk news data untuk sentiment analysis
+- **Requirement**: Data collector harus sudah berjalan
+
+### BacktestDataLoader (Binance API)
+- Memuat data langsung dari Binance API
+- Bisa load ribuan candle (1-5+ tahun)
+- Pagination otomatis untuk data besar
+- Rate limiting untuk menghindari ban
+- **Use case**: Long-term backtesting
 
 ## 🚀 Cara Menggunakan
 
@@ -49,7 +65,40 @@ python -m backtesting.main_backtest \
   --days 90
 ```
 
-### 2. Run Optimization
+### 2. Long-Term Backtest dengan Binance API
+
+Untuk backtest jangka panjang (1+ tahun), gunakan flag `--use-api` untuk memuat data langsung dari Binance API:
+
+```bash
+# Backtest 2 tahun data dari Binance API
+python -m backtesting.main_backtest \
+  --mode backtest \
+  --symbol BTC/USDT \
+  --timeframe 1h \
+  --use-api \
+  --start-date 2022-01-01
+
+# Backtest 1 tahun dengan custom start date
+python -m backtesting.main_backtest \
+  --mode backtest \
+  --symbol ETH/USDT \
+  --timeframe 4h \
+  --use-api \
+  --start-date 2023-01-01
+```
+
+**Keuntungan menggunakan `--use-api`:**
+- ✅ Bisa memuat data hingga ribuan candle
+- ✅ Tidak tergantung pada data di database lokal
+- ✅ Cocok untuk backtest jangka panjang (1-5 tahun)
+- ✅ Data langsung dari Binance (akurat & lengkap)
+
+**Catatan:**
+- Membutuhkan koneksi internet yang stabil
+- Proses loading mungkin memakan waktu beberapa menit untuk data panjang
+- Tidak ada news data (karena hanya load candle data)
+
+### 3. Run Optimization
 
 ```bash
 python -m backtesting.main_backtest --mode optimize
@@ -64,6 +113,14 @@ python -m backtesting.main_backtest \
   --timeframe 1h \
   --balance 10000 \
   --days 90
+
+# Optimize dengan data dari Binance API (long-term)
+python -m backtesting.main_backtest \
+  --mode optimize \
+  --symbol BTC/USDT \
+  --timeframe 1h \
+  --use-api \
+  --start-date 2022-01-01
 ```
 
 ## 📊 Output
@@ -227,6 +284,97 @@ runner = StrategyRunner(initial_balance=10000)
 result = await runner.run(candles_df, news_data, strategy_func=my_custom_strategy)
 ```
 
+## 💻 Programmatic Usage
+
+### Menggunakan BacktestDataLoader untuk Long-Term Backtest
+
+```python
+import asyncio
+from backtesting import BacktestDataLoader, StrategyRunner, PerformanceMetrics
+
+async def long_term_backtest():
+    # 1. Load data dari Binance API (2 tahun)
+    loader = BacktestDataLoader()
+    await loader.initialize()
+    
+    candles_df = await loader.load_historical_data(
+        symbol="BTC/USDT",
+        timeframe="1h",
+        start_date="2022-01-01",
+        end_date="2024-01-01",
+    )
+    
+    await loader.close()
+    
+    print(f"Loaded {len(candles_df)} candles")
+    
+    # 2. Run backtest
+    runner = StrategyRunner(
+        initial_balance=10000.0,
+        max_risk_per_trade=0.02,
+        trading_fee=0.001,
+    )
+    
+    result = await runner.run(candles_df, news_data=[])
+    
+    # 3. Calculate metrics
+    metrics_calc = PerformanceMetrics(
+        result["trades"], 
+        result["equity_curve"]
+    )
+    
+    metrics = metrics_calc.calculate_all()
+    metrics_calc.print_summary()
+    
+    # 4. Generate reports
+    from backtesting.report_generator import ReportGenerator
+    
+    report_gen = ReportGenerator(
+        result["trades"],
+        result["equity_curve"],
+        metrics
+    )
+    
+    report_gen.generate_report()
+    report_gen.generate_interactive_report()
+    report_gen.generate_seaborn_report()
+
+# Run
+asyncio.run(long_term_backtest())
+```
+
+### Multi-Timeframe Analysis
+
+```python
+async def multi_timeframe_backtest():
+    loader = BacktestDataLoader()
+    await loader.initialize()
+    
+    # Load multiple timeframes
+    data = await loader.load_multi_timeframe(
+        symbol="BTC/USDT",
+        timeframes=["1h", "4h", "1d"],
+        start_date="2023-01-01",
+    )
+    
+    await loader.close()
+    
+    # Run backtest on each timeframe
+    for timeframe, candles_df in data.items():
+        print(f"\n{'='*70}")
+        print(f"Backtesting {timeframe} timeframe")
+        print(f"{'='*70}")
+        
+        runner = StrategyRunner(initial_balance=10000.0)
+        result = await runner.run(candles_df, [])
+        
+        metrics_calc = PerformanceMetrics(
+            result["trades"], 
+            result["equity_curve"]
+        )
+        metrics_calc.print_summary()
+```
+
 ## 🎛️ Parameter Optimization
 
 ### Define Parameter Grid
@@ -294,9 +442,19 @@ Best Performance:
 - Position sizing berdasarkan risk
 
 ### Data Requirements
+
+**Menggunakan Local Database (default):**
 - Minimal 200 candles untuk analysis
 - Data harus valid (no NaN, logical OHLC)
 - Timeframe consistent
+- Data collector harus sudah berjalan untuk mengumpulkan data
+
+**Menggunakan Binance API (`--use-api`):**
+- Bisa memuat ribuan candle (hingga 5+ tahun data)
+- Data langsung dari Binance (akurat & lengkap)
+- Tidak perlu data collector berjalan
+- Membutuhkan koneksi internet yang stabil
+- Proses loading lebih lama untuk data panjang
 
 ## 📊 Interpretasi Hasil
 
@@ -354,11 +512,14 @@ python -m data_collector.main_collector
 
 **Backtesting Engine: COMPLETE ✅**
 
-- ✅ Data loader dengan validation
+- ✅ Data loader dari database lokal (DataLoader)
+- ✅ Data loader dari Binance API (BacktestDataLoader) - untuk long-term backtest
 - ✅ Strategy runner (no look-ahead bias)
-- ✅ Performance metrics (15+ metrics)
-- ✅ Visual report generator
-- ✅ Parameter optimizer
+- ✅ Performance metrics (15+ basic + 8 advanced metrics)
+- ✅ Visual report generator (Matplotlib, Seaborn, Plotly)
+- ✅ Parameter optimizer (Grid search & Bayesian dengan Optuna)
+- ✅ Multi-timeframe support
+- ✅ CLI interface dengan flag `--use-api`
 - ✅ Build successful
 
 ---

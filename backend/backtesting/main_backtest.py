@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data_collector.database import DatabaseManager
 from .data_loader import DataLoader
+from .backtest_data_loader import BacktestDataLoader
 from .strategy_runner import StrategyRunner
 from .performance_metrics import PerformanceMetrics
 from .report_generator import ReportGenerator
@@ -32,6 +33,8 @@ async def run_backtest(
     timeframe: str = "1h",
     initial_balance: float = 10000.0,
     days_back: int = 90,
+    use_api: bool = False,
+    start_date: str = None,
 ):
     """
     Run backtest on historical data
@@ -40,7 +43,9 @@ async def run_backtest(
         symbol: Trading pair
         timeframe: Timeframe
         initial_balance: Starting balance
-        days_back: Number of days to backtest
+        days_back: Number of days to backtest (used if start_date not provided)
+        use_api: If True, load data directly from Binance API (for long-term backtest)
+        start_date: Start date in YYYY-MM-DD format (optional)
     """
     logger.info("=" * 70)
     logger.info("🚀 STARTING BACKTEST")
@@ -48,33 +53,62 @@ async def run_backtest(
     logger.info(f"Symbol: {symbol}")
     logger.info(f"Timeframe: {timeframe}")
     logger.info(f"Initial Balance: ${initial_balance:,.2f}")
-    logger.info(f"Period: Last {days_back} days")
+    logger.info(f"Data Source: {'Binance API' if use_api else 'Local Database'}")
     logger.info("")
 
-    # Initialize database
-    db = DatabaseManager()
-    await db.initialize()
+    # Determine date range
+    end_date = datetime.now()
+    if start_date:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    else:
+        start_dt = end_date - timedelta(days=days_back)
+    
+    logger.info(f"Period: {start_dt.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+    logger.info("")
 
     # Load data
     logger.info("📊 Loading historical data...")
-    data_loader = DataLoader(db)
-
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_back)
-
-    candles_df = await data_loader.load_candles(symbol, timeframe, start_date, end_date)
-
-    if candles_df.empty:
-        logger.error("No data available for backtest")
-        return
-
-    # Validate data
-    if not data_loader.validate_data(candles_df):
-        logger.error("Data validation failed")
-        return
-
-    # Load news data (optional)
-    news_data = await data_loader.load_news(start_date, end_date)
+    
+    if use_api:
+        # Use BacktestDataLoader to fetch from Binance API
+        data_loader = BacktestDataLoader()
+        await data_loader.initialize()
+        
+        candles_df = await data_loader.load_historical_data(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=start_dt.strftime("%Y-%m-%d"),
+            end_date=end_date.strftime("%Y-%m-%d"),
+        )
+        
+        await data_loader.close()
+        
+        if candles_df.empty:
+            logger.error("No data available from Binance API")
+            return
+        
+        # No news data when using API
+        news_data = []
+    else:
+        # Use DataLoader to fetch from local database
+        db = DatabaseManager()
+        await db.initialize()
+        
+        data_loader = DataLoader(db)
+        candles_df = await data_loader.load_candles(symbol, timeframe, start_dt, end_date)
+        
+        if candles_df.empty:
+            logger.error("No data available in local database")
+            logger.info("💡 Tip: Use --use-api flag to load data directly from Binance")
+            return
+        
+        # Validate data
+        if not data_loader.validate_data(candles_df):
+            logger.error("Data validation failed")
+            return
+        
+        # Load news data (optional)
+        news_data = await data_loader.load_news(start_dt, end_date)
 
     # Run backtest
     logger.info("\n🏃 Running backtest...")
@@ -117,6 +151,8 @@ async def run_optimization(
     timeframe: str = "1h",
     initial_balance: float = 10000.0,
     days_back: int = 90,
+    use_api: bool = False,
+    start_date: str = None,
 ):
     """
     Run parameter optimization
@@ -125,30 +161,51 @@ async def run_optimization(
         symbol: Trading pair
         timeframe: Timeframe
         initial_balance: Starting balance
-        days_back: Number of days to optimize
+        days_back: Number of days to optimize (used if start_date not provided)
+        use_api: If True, load data directly from Binance API
+        start_date: Start date in YYYY-MM-DD format (optional)
     """
     logger.info("=" * 70)
     logger.info("🔧 STARTING OPTIMIZATION")
     logger.info("=" * 70)
+    logger.info(f"Data Source: {'Binance API' if use_api else 'Local Database'}")
 
-    # Initialize database
-    db = DatabaseManager()
-    await db.initialize()
+    # Determine date range
+    end_date = datetime.now()
+    if start_date:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    else:
+        start_dt = end_date - timedelta(days=days_back)
 
     # Load data
     logger.info("📊 Loading historical data...")
-    data_loader = DataLoader(db)
-
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_back)
-
-    candles_df = await data_loader.load_candles(symbol, timeframe, start_date, end_date)
+    
+    if use_api:
+        # Use BacktestDataLoader to fetch from Binance API
+        data_loader = BacktestDataLoader()
+        await data_loader.initialize()
+        
+        candles_df = await data_loader.load_historical_data(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=start_dt.strftime("%Y-%m-%d"),
+            end_date=end_date.strftime("%Y-%m-%d"),
+        )
+        
+        await data_loader.close()
+        news_data = []
+    else:
+        # Use DataLoader to fetch from local database
+        db = DatabaseManager()
+        await db.initialize()
+        
+        data_loader = DataLoader(db)
+        candles_df = await data_loader.load_candles(symbol, timeframe, start_dt, end_date)
+        news_data = await data_loader.load_news(start_dt, end_date)
 
     if candles_df.empty:
         logger.error("No data available for optimization")
         return
-
-    news_data = await data_loader.load_news(start_date, end_date)
 
     # Define parameter grid
     param_grid = {
@@ -227,6 +284,17 @@ async def main():
         default=90,
         help="Days to backtest (default: 90)",
     )
+    parser.add_argument(
+        "--use-api",
+        action="store_true",
+        help="Load data directly from Binance API (for long-term backtest)",
+    )
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default=None,
+        help="Start date in YYYY-MM-DD format (overrides --days)",
+    )
 
     args = parser.parse_args()
 
@@ -237,6 +305,8 @@ async def main():
                 timeframe=args.timeframe,
                 initial_balance=args.balance,
                 days_back=args.days,
+                use_api=args.use_api,
+                start_date=args.start_date,
             )
         else:
             await run_optimization(
@@ -244,6 +314,8 @@ async def main():
                 timeframe=args.timeframe,
                 initial_balance=args.balance,
                 days_back=args.days,
+                use_api=args.use_api,
+                start_date=args.start_date,
             )
 
     except KeyboardInterrupt:
