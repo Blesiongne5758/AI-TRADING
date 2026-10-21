@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { createChart } from 'lightweight-charts';
+import { createChart, CandlestickSeries, HistogramSeries } from 'lightweight-charts';
 
 export default function ChartView() {
   const [symbol, setSymbol] = useState('BTC/USDT');
@@ -18,11 +18,20 @@ export default function ChartView() {
   }, [symbol, timeframe]);
 
   useEffect(() => {
+    // Cleanup previous chart
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
+    }
+
     if (!chartContainerRef.current || candles.length === 0) return;
 
-    // Create chart
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
+    // Create chart dengan null check
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    const chart = createChart(container, {
+      width: container.clientWidth,
       height: 500,
       layout: {
         background: { color: '#1e293b' },
@@ -40,8 +49,10 @@ export default function ChartView() {
       },
     });
 
-    // Add candlestick series
-    const candleSeries = chart.addCandlestickSeries({
+    chartRef.current = chart;
+
+    // Add candlestick series (API v4)
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#10b981',
       downColor: '#ef4444',
       borderDownColor: '#ef4444',
@@ -61,45 +72,48 @@ export default function ChartView() {
 
     candleSeries.setData(chartData);
 
-    // Add markers untuk sinyal
-    if (signal) {
-      const markers = [];
-      
-      if (signal.signal === 'BUY' || signal.signal === 'STRONG_BUY') {
-        markers.push({
-          time: chartData[chartData.length - 1].time,
-          position: 'belowBar',
-          color: '#10b981',
-          shape: 'arrowUp',
-          text: 'BUY',
-        });
-      } else if (signal.signal === 'SELL' || signal.signal === 'STRONG_SELL') {
-        markers.push({
-          time: chartData[chartData.length - 1].time,
-          position: 'aboveBar',
-          color: '#ef4444',
-          shape: 'arrowDown',
-          text: 'SELL',
-        });
-      }
+    // Add volume series (API v4)
+    const volumeSeries = chart.addSeries(HistogramSeries, {
+      color: '#6366f1',
+      priceFormat: {
+        type: 'volume',
+      },
+      priceScaleId: '',
+    });
 
-      candleSeries.setMarkers(markers);
-    }
+    volumeSeries.priceScale().applyOptions({
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+    });
+
+    const volumeData = candles.map(c => ({
+      time: c.timestamp / 1000,
+      value: c.volume,
+      color: c.close >= c.open ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)',
+    }));
+
+    volumeSeries.setData(volumeData);
 
     chart.timeScale().fitContent();
-    chartRef.current = chart;
 
     // Handle resize
     const handleResize = () => {
-      chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+      }
     };
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      chart.remove();
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
     };
-  }, [candles, signal]);
+  }, [candles]);
 
   const fetchData = async () => {
     try {

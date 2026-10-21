@@ -25,10 +25,10 @@ pandas-ta==0.3.14b
 # Opsi 1: Simple (ringan, untuk MVP cepat)
 textblob==0.17.1
 
-# Opsi 2: Advanced (FinBERT - lebih akurat, butuh ~500MB)
+# Opsi 2: Advanced (FinBERT - lebih akurat, +30% accuracy)
 # Uncomment jika ingin upgrade ke ML-based:
-# transformers==4.36.2
-# torch==2.1.2
+transformers==4.36.2
+torch==2.1.2
 
 # ============================================
 # News RSS
@@ -45,6 +45,24 @@ aiosqlite==0.19.0
 # ============================================
 python-dotenv==1.0.0
 loguru==0.7.2
+
+# ============================================
+# Backtesting & Visualization
+# ============================================
+matplotlib==3.8.2
+seaborn==0.13.1
+plotly==5.18.0
+
+# ============================================
+# Advanced Metrics & Statistics
+# ============================================
+empyrical==0.5.5
+scipy==1.12.0
+
+# ============================================
+# Advanced Optimization
+# ============================================
+optuna==3.5.0
 
 # ============================================
 # FastAPI & Web Server
@@ -67,3 +85,45 @@ python-multipart==0.0.6
 # openai==1.12.0
 # langchain==0.1.5
 # langchain-community==0.0.20
+
+# ============================================
+# Modul G: Advanced AI (FinBERT)
+# ============================================
+# Core AI/ML (sudah ada di atas):
+# - transformers==4.36.2 (FinBERT model)
+# - torch==2.1.2 (PyTorch backend)
+# - scipy==1.12.0 (scientific computing)
+
+# Additional dependencies untuk Advanced AI:
+sentencepiece==0.1.99        # Tokenizer untuk FinBERT
+tweepy==4.14.0               # Twitter/X API client
+requests==2.31.0             # HTTP client untuk news APIs
+scikit-learn==1.4.0          # Anomaly detection & ML utilities
+tenacity==8.2.3              # Retry logic untuk API calls
+
+# ============================================
+# Backtesting Engine
+# ============================================
+# Core backtesting (sudah ada di atas):
+# - scipy==1.12.0 (scientific computing)
+# - optuna==3.5.0 (hyperparameter optimization)
+# - scikit-learn==1.4.0 (ML utilities)
+# - matplotlib, seaborn, plotly (visualization)
+
+# Additional dependencies untuk Backtesting:
+# Note: Menggunakan custom backtesting engine (built-in)
+# Tidak perlu library backtesting external karena sudah custom-built
+
+# ============================================
+# Custom Strategies Framework
+# ============================================
+# Dependencies sudah tercakup di atas:
+# - pandas, numpy (data processing)
+# - pandas-ta (technical indicators)
+# - scipy (advanced calculations)
+
+# Note: 
+# - aiohttp, pandas, numpy sudah ada di section sebelumnya
+# - Cache system menggunakan SimpleCache (built-in, no external dependency)
+# - Tidak perlu install aiocache
+# - Backtesting engine adalah custom-built, tidak perlu library external
