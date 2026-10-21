@@ -127,7 +127,7 @@ async def run_optimization():
 
 async def main():
     """Main entry point"""
-    mode = "single"  # Change to "optimize" for optimization
+    mode = "optimize"  # Change to "single" for single backtest
 
     if mode == "single":
         await run_single_backtest()
