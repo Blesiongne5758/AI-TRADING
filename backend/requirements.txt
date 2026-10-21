@@ -25,10 +25,10 @@ pandas-ta==0.3.14b
 # Opsi 1: Simple (ringan, untuk MVP cepat)
 textblob==0.17.1
 
-# Opsi 2: Advanced (FinBERT - lebih akurat, butuh ~500MB)
+# Opsi 2: Advanced (FinBERT - lebih akurat, +30% accuracy)
 # Uncomment jika ingin upgrade ke ML-based:
-# transformers==4.36.2
-# torch==2.1.2
+transformers==4.36.2
+torch==2.1.2
 
 # ============================================
 # News RSS
@@ -85,3 +85,15 @@ python-multipart==0.0.6
 # openai==1.12.0
 # langchain==0.1.5
 # langchain-community==0.0.20
+
+# ============================================
+# Modul G: Advanced AI (FinBERT)
+# ============================================
+# Dependencies sudah termasuk di atas:
+# - transformers==4.36.2 (FinBERT model)
+# - torch==2.1.2 (PyTorch backend)
+#
+# Additional dependencies untuk Advanced AI:
+# - aiohttp (sudah ada) - untuk API calls
+# - pandas (sudah ada) - untuk data processing
+# - numpy (sudah ada) - untuk calculations
