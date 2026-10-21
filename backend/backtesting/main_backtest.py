@@ -143,46 +143,18 @@ async def run_backtest(
     # Print summary
     metrics_calc.print_summary()
 
-    # Generate report
+    # Generate report dengan API baru
     logger.info("\n📊 Generating visual report...")
-    
-    # Convert BacktestResult ke format untuk ReportGenerator
-    trades_list = [
-        {
-            "symbol": trade.symbol,
-            "side": trade.side,
-            "entry_price": trade.entry_price,
-            "exit_price": trade.exit_price,
-            "quantity": trade.quantity,
-            "entry_time": trade.entry_time,
-            "exit_time": trade.exit_time,
-            "pnl": trade.pnl,
-            "pnl_percent": trade.pnl_percent,
-            "fee": trade.fee,
-            "exit_reason": trade.exit_reason,
-            "holding_period": trade.holding_period,
-        }
-        for trade in result.trades
-    ]
-    
-    equity_list = [
-        {
-            "timestamp": point["timestamp"],
-            "balance": point["balance"],
-            "price": point["price"],
-        }
-        for point in result.equity_curve
-    ]
-    
-    report_gen = ReportGenerator(trades_list, equity_list, metrics)
-    report_path = report_gen.generate_report()
+    report_gen = ReportGenerator()
+    report_path = report_gen.generate_full_report(result, metrics, grading)
 
     if report_path:
-        logger.info(f"\n✅ Report saved to: {report_path}/")
+        logger.info(f"\n✅ Report saved to: {report_path}")
         logger.info("   - equity_curve.png")
         logger.info("   - drawdown.png")
         logger.info("   - trade_distribution.png")
         logger.info("   - monthly_returns.png")
+        logger.info("   - exit_reasons.png")
         logger.info("   - summary.txt")
 
     return metrics

@@ -332,31 +332,65 @@ Closed LONG position @ $43,800.00, PnL: +$305.50 (+3.06%), Reason: TAKE_PROFIT
    - summary.txt
 ```
 
-### Visual Reports
+### Visual Reports (NEW API!)
 
-**1. Equity Curve**
-- Grafik pertumbuhan equity over time
-- Comparison dengan initial balance
-- Metrics overlay (Total Return, Sharpe, Max DD)
+ReportGenerator sekarang menerima `BacktestResult` langsung (tidak perlu konversi manual):
 
-**2. Drawdown Chart**
-- Visualisasi drawdown periods
-- Max drawdown highlight
-- Duration analysis
+```python
+from backtesting.report_generator import ReportGenerator
 
-**3. Trade Distribution**
-- Histogram PnL distribution
-- Winning vs losing trades
-- Outlier detection
+report_gen = ReportGenerator()
+report_path = report_gen.generate_full_report(result, metrics, grading)
+```
 
-**4. Monthly Returns Heatmap**
-- Monthly returns by year
-- Color-coded (green = profit, red = loss)
-- Seasonal patterns
+**Output:**
+```
+backtest_reports/
+└── BTC_USDT_20240115_143022/
+    ├── equity_curve.png       # Grafik pertumbuhan equity dengan benchmark
+    ├── drawdown.png           # Chart drawdown dengan fill area
+    ├── trade_distribution.png # Histogram PnL + cumulative PnL
+    ├── monthly_returns.png    # Return bulanan (bar chart)
+    ├── exit_reasons.png       # Pie chart exit reasons (TP/SL/END)
+    └── summary.txt            # Text report lengkap dengan grading
+```
 
-### Text Summary
+**1. Equity Curve** (`equity_curve.png`)
+- Line chart pertumbuhan equity
+- Reference line initial balance
+- Fill area hijau (profit) / merah (loss)
+- Title dengan key metrics (Return, Sharpe, Max DD)
 
-File `summary.txt` berisi ringkasan lengkap performa dalam format text.
+**2. Drawdown Chart** (`drawdown.png`)
+- Area chart drawdown percentage
+- Visualisasi peak-to-trough decline
+- Merah untuk drawdown
+
+**3. Trade Distribution** (`trade_distribution.png`)
+- **Left**: Histogram PnL distribution
+- **Right**: Trade-by-trade PnL dengan cumulative line
+- Color-coded hijau (profit) / merah (loss)
+
+**4. Monthly Returns** (`monthly_returns.png`)
+- Bar chart return per bulan
+- Color-coded hijau (positive) / merah (negative)
+- Reference line di 0%
+
+**5. Exit Reasons** (`exit_reasons.png`) - NEW!
+- Pie chart distribusi exit reasons
+- TAKE_PROFIT (hijau)
+- STOP_LOSS (merah)
+- BACKTEST_END (abu-abu)
+
+**6. Summary Text** (`summary.txt`) - ENHANCED!
+- Periode backtest
+- Performance metrics lengkap
+- Trade statistics
+- Risk metrics
+- Long/Short breakdown
+- Exit reasons distribution
+- **Strategy grading** (A+ to F)
+- **Recommendation** (actionable insights)
 
 ## 📈 Performance Metrics
 
