@@ -1,333 +1,302 @@
 """
-FinBERT Sentiment Analyzer
-Menggantikan TextBlob dengan model FinBERT untuk akurasi sentimen +30%
+FinBERT Analyzer
+Model AI khusus finansial untuk analisis sentimen
+Menggantikan TextBlob dengan akurasi +30%
 """
 import asyncio
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 from loguru import logger
-from transformers import pipeline
-import torch
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from .config import DEFAULT_FINBERT_MODEL, DEVICE, MODEL_CACHE_DIR
+from .cache_manager import cache
+
+# Lazy import untuk percepat startup
+_model = None
+_tokenizer = None
+_pipeline = None
 
 
 class FinBERTAnalyzer:
-    """
-    FinBERT-based sentiment analyzer untuk financial text
-    
-    Features:
-    - Akurasi +30% dibanding TextBlob
-    - Trained khusus untuk financial/crypto news
-    - Support batch processing
-    - GPU acceleration (jika tersedia)
-    """
-    
-    def __init__(self, model_name: str = None):
-        """
-        Initialize FinBERT analyzer
-        
-        Args:
-            model_name: HuggingFace model name (default from config)
-                - "yiyanghkust/finbert-tone" (recommended)
-                - "ProsusAI/finbert" (alternative)
-        """
-        self.model_name = model_name or DEFAULT_FINBERT_MODEL
-        self.pipeline = None
-        self.device = 0 if DEVICE == "cuda" and torch.cuda.is_available() else -1
-        self.cache_dir = MODEL_CACHE_DIR
-        
-        logger.info(f"🧠 Initializing FinBERT analyzer: {self.model_name}")
-        logger.info(f"   Device: {'GPU' if self.device == 0 else 'CPU'}")
-        logger.info(f"   Cache: {self.cache_dir}")
-        
-    async def initialize(self):
-        """Load model (async untuk avoid blocking)"""
+    """Analyzer sentimen finansial menggunakan FinBERT"""
+
+    def __init__(self, model_name: str = DEFAULT_FINBERT_MODEL):
+        self.model_name = model_name
+        self.is_loaded = False
+        self.fallback_to_textblob = False
+
+    def _load_model(self):
+        """Load model secara lazy (saat pertama kali dibutuhkan)"""
+        global _model, _tokenizer, _pipeline
+
+        if _pipeline is not None:
+            self.is_loaded = True
+            return
+
         try:
-            logger.info("📥 Loading FinBERT model (first time may download ~500MB)...")
-            
-            # Load model di thread pool
-            loop = asyncio.get_event_loop()
-            self.pipeline = await loop.run_in_executor(
-                None,
-                lambda: pipeline(
-                    "sentiment-analysis",
-                    model=self.model_name,
-                    tokenizer=self.model_name,
-                    device=self.device,
-                    truncation=True,
-                    max_length=512,
-                    cache_dir=str(self.cache_dir)
-                )
+            from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+            import torch
+
+            logger.info(f"🧠 Loading FinBERT model: {self.model_name}")
+            logger.info(f"   Device: {DEVICE}")
+            logger.info(f"   Cache dir: {MODEL_CACHE_DIR}")
+            logger.info("   (First load may download ~400MB, please wait...)")
+
+            # Load tokenizer dan model
+            _tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                cache_dir=str(MODEL_CACHE_DIR),
             )
-            
+            _model = AutoModelForSequenceClassification.from_pretrained(
+                self.model_name,
+                cache_dir=str(MODEL_CACHE_DIR),
+            )
+
+            # Buat pipeline
+            device_id = 0 if DEVICE == "cuda" else -1
+            _pipeline = pipeline(
+                "sentiment-analysis",
+                model=_model,
+                tokenizer=_tokenizer,
+                device=device_id,
+                truncation=True,
+                max_length=512,
+            )
+
+            self.is_loaded = True
             logger.info("✅ FinBERT model loaded successfully")
-            
+
         except Exception as e:
-            logger.error(f"❌ Failed to load FinBERT model: {e}")
-            raise
-    
-    def analyze_text(self, text: str) -> Dict:
-        """
-        Analyze sentiment of single text
-        
-        Args:
-            text: Text to analyze (news title, summary, tweet, etc)
-            
-        Returns:
-            {
-                "label": "POSITIVE" | "NEGATIVE" | "NEUTRAL",
-                "score": float (0-1),
-                "sentiment_score": float (-1 to +1)
-            }
-        """
-        if not self.pipeline:
-            raise RuntimeError("FinBERT model not initialized. Call initialize() first.")
-        
-        if not text or len(text.strip()) < 10:
-            return {
-                "label": "NEUTRAL",
-                "score": 0.5,
-                "sentiment_score": 0.0
-            }
-        
+            logger.error(f"❌ Failed to load FinBERT: {e}")
+            logger.warning("⚠️  Falling back to TextBlob (lower accuracy)")
+            self.fallback_to_textblob = True
+
+    def _preprocess_text(self, text: str) -> str:
+        """Preprocess teks untuk FinBERT"""
+        if not text:
+            return ""
+
+        # Bersihkan teks
+        text = text.strip()
+
+        # Hapus URL
+        import re
+        text = re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)
+
+        # Hapus mention (@user)
+        text = re.sub(r"@\w+", "", text)
+
+        # Hapus hashtag symbol tapi keep text
+        text = re.sub(r"#(\w+)", r"\1", text)
+
+        # Hapus extra whitespace
+        text = re.sub(r"\s+", " ", text)
+
+        # Potong jika terlalu panjang (FinBERT max 512 tokens)
+        words = text.split()
+        if len(words) > 400:
+            text = " ".join(words[:400])
+
+        return text
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def _run_inference(self, text: str) -> Dict:
+        """Jalankan inference dengan retry"""
+        if _pipeline is None:
+            raise RuntimeError("Model not loaded")
+
+        result = _pipeline(text)[0]
+
+        label = result["label"]
+        score = result["score"]
+
+        # Normalisasi label ke format standar
+        label_map = {
+            "Positive": "POSITIVE",
+            "positive": "POSITIVE",
+            "Negative": "NEGATIVE",
+            "negative": "NEGATIVE",
+            "Neutral": "NEUTRAL",
+            "neutral": "NEUTRAL",
+        }
+
+        normalized_label = label_map.get(label, "NEUTRAL")
+
+        # Konversi ke skor -1 sampai +1
+        if normalized_label == "POSITIVE":
+            numeric_score = score
+        elif normalized_label == "NEGATIVE":
+            numeric_score = -score
+        else:
+            numeric_score = 0.0
+
+        return {
+            "label": normalized_label,
+            "confidence": score,
+            "score": numeric_score,
+            "method": "finbert",
+        }
+
+    def _analyze_with_textblob(self, text: str) -> Dict:
+        """Fallback ke TextBlob jika FinBERT gagal"""
         try:
-            # Truncate text if too long
-            text_truncated = text[:500]
-            
-            # Analyze
-            result = self.pipeline(text_truncated)[0]
-            
-            label = result["label"].upper()
-            confidence = result["score"]
-            
-            # Convert to sentiment score (-1 to +1)
-            if label == "POSITIVE":
-                sentiment_score = confidence
-            elif label == "NEGATIVE":
-                sentiment_score = -confidence
-            else:  # NEUTRAL
-                sentiment_score = 0.0
-            
+            from textblob import TextBlob
+            blob = TextBlob(text)
+            polarity = blob.sentiment.polarity
+
+            if polarity > 0.1:
+                label = "POSITIVE"
+            elif polarity < -0.1:
+                label = "NEGATIVE"
+            else:
+                label = "NEUTRAL"
+
             return {
                 "label": label,
-                "score": confidence,
-                "sentiment_score": sentiment_score
+                "confidence": abs(polarity),
+                "score": polarity,
+                "method": "textblob_fallback",
             }
-            
         except Exception as e:
-            logger.error(f"❌ Error analyzing text: {e}")
+            logger.error(f"TextBlob fallback also failed: {e}")
             return {
                 "label": "NEUTRAL",
-                "score": 0.5,
-                "sentiment_score": 0.0
+                "confidence": 0.0,
+                "score": 0.0,
+                "method": "error",
             }
-    
-    def analyze_batch(self, texts: List[str]) -> List[Dict]:
+
+    async def analyze(self, text: str, use_cache: bool = True) -> Dict:
         """
-        Analyze sentiment of multiple texts (batch processing)
+        Analisis sentimen satu teks
         
         Args:
-            texts: List of texts to analyze
+            text: Teks yang akan dianalisis
+            use_cache: Gunakan cache untuk hemat resource
             
         Returns:
-            List of sentiment results
+            Dict dengan label, confidence, score, method
         """
-        if not self.pipeline:
-            raise RuntimeError("FinBERT model not initialized.")
+        if not text or len(text.strip()) < 5:
+            return {
+                "label": "NEUTRAL",
+                "confidence": 0.0,
+                "score": 0.0,
+                "method": "empty",
+            }
+
+        # Preprocess
+        processed_text = self._preprocess_text(text)
+
+        # Cek cache
+        if use_cache:
+            cached = await cache.get("finbert", processed_text)
+            if cached:
+                return cached
+
+        # Load model jika belum
+        if not self.is_loaded and not self.fallback_to_textblob:
+            await asyncio.to_thread(self._load_model)
+
+        # Analisis
+        try:
+            if self.fallback_to_textblob:
+                result = self._analyze_with_textblob(processed_text)
+            else:
+                result = await asyncio.to_thread(self._run_inference, processed_text)
+        except Exception as e:
+            logger.error(f"FinBERT inference error: {e}")
+            result = self._analyze_with_textblob(processed_text)
+
+        # Simpan ke cache
+        if use_cache:
+            await cache.set("finbert", result, 300, processed_text)
+
+        return result
+
+    async def analyze_batch(
+        self, texts: List[str], batch_size: int = 16
+    ) -> List[Dict]:
+        """
+        Analisis batch teks secara efisien
         
+        Args:
+            texts: List teks yang akan dianalisis
+            batch_size: Ukuran batch untuk inference
+            
+        Returns:
+            List hasil analisis
+        """
+        if not texts:
+            return []
+
+        # Load model jika belum
+        if not self.is_loaded and not self.fallback_to_textblob:
+            await asyncio.to_thread(self._load_model)
+
         results = []
-        
-        # Process in batches of 32 (optimal for GPU)
-        batch_size = 32
-        
+
+        # Proses dalam batch
         for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            
+            batch = texts[i:i+batch_size]
+            processed_batch = [self._preprocess_text(t) for t in batch]
+
             try:
-                # Filter empty texts
-                valid_texts = [t[:500] if t and len(t.strip()) >= 10 else "neutral text" for t in batch]
-                
-                # Analyze batch
-                batch_results = self.pipeline(valid_texts)
-                
-                # Process results
-                for result in batch_results:
-                    label = result["label"].upper()
-                    confidence = result["score"]
-                    
-                    if label == "POSITIVE":
-                        sentiment_score = confidence
-                    elif label == "NEGATIVE":
-                        sentiment_score = -confidence
+                if self.fallback_to_textblob:
+                    batch_results = [
+                        self._analyze_with_textblob(t) for t in processed_batch
+                    ]
+                else:
+                    # Batch inference (lebih cepat)
+                    if _pipeline is not None:
+                        raw_results = await asyncio.to_thread(
+                            _pipeline, processed_batch
+                        )
+                        batch_results = []
+                        for r in raw_results:
+                            label = r["label"]
+                            score = r["score"]
+                            label_map = {
+                                "Positive": "POSITIVE",
+                                "positive": "POSITIVE",
+                                "Negative": "NEGATIVE",
+                                "negative": "NEGATIVE",
+                                "Neutral": "NEUTRAL",
+                                "neutral": "NEUTRAL",
+                            }
+                            normalized = label_map.get(label, "NEUTRAL")
+                            numeric = (
+                                score if normalized == "POSITIVE"
+                                else -score if normalized == "NEGATIVE"
+                                else 0.0
+                            )
+                            batch_results.append({
+                                "label": normalized,
+                                "confidence": score,
+                                "score": numeric,
+                                "method": "finbert_batch",
+                            })
                     else:
-                        sentiment_score = 0.0
-                    
-                    results.append({
-                        "label": label,
-                        "score": confidence,
-                        "sentiment_score": sentiment_score
-                    })
-                    
+                        batch_results = [
+                            self._analyze_with_textblob(t) for t in processed_batch
+                        ]
+
+                results.extend(batch_results)
+
             except Exception as e:
-                logger.error(f"❌ Error processing batch {i//batch_size}: {e}")
-                # Add neutral results for failed batch
-                results.extend([
-                    {"label": "NEUTRAL", "score": 0.5, "sentiment_score": 0.0}
-                    for _ in batch
-                ])
-        
+                logger.error(f"Batch inference error: {e}")
+                # Fallback per item
+                for t in processed_batch:
+                    results.append(self._analyze_with_textblob(t))
+
         return results
-    
-    def analyze_news_batch(self, news_items: List[Dict]) -> Dict:
-        """
-        Analyze sentiment of news articles
-        
-        Args:
-            news_items: List of news dicts with 'title' and 'summary'
-            
-        Returns:
-            {
-                "overall_score": float (-1 to +1),
-                "overall_label": str,
-                "positive_count": int,
-                "negative_count": int,
-                "neutral_count": int,
-                "total_articles": int,
-                "articles": List[Dict]
-            }
-        """
-        if not news_items:
-            return {
-                "overall_score": 0.0,
-                "overall_label": "NEUTRAL",
-                "positive_count": 0,
-                "negative_count": 0,
-                "neutral_count": 0,
-                "total_articles": 0,
-                "articles": []
-            }
-        
-        # Combine title + summary for each article
-        texts = [
-            f"{item.get('title', '')}. {item.get('summary', '')}"
-            for item in news_items
-        ]
-        
-        # Analyze batch
-        sentiments = self.analyze_batch(texts)
-        
-        # Build results
-        articles = []
-        scores = []
-        
-        for item, sentiment in zip(news_items, sentiments):
-            articles.append({
-                "source": item.get("source"),
-                "title": item.get("title"),
-                "link": item.get("link"),
-                "sentiment": sentiment
-            })
-            scores.append(sentiment["sentiment_score"])
-        
-        # Calculate overall metrics
-        avg_score = sum(scores) / len(scores) if scores else 0.0
-        
-        positive_count = sum(1 for s in scores if s > 0.1)
-        negative_count = sum(1 for s in scores if s < -0.1)
-        neutral_count = len(scores) - positive_count - negative_count
-        
-        if avg_score > 0.15:
-            overall_label = "POSITIVE"
-        elif avg_score < -0.15:
-            overall_label = "NEGATIVE"
-        else:
-            overall_label = "NEUTRAL"
-        
+
+    def get_model_info(self) -> Dict:
+        """Informasi model yang digunakan"""
         return {
-            "overall_score": avg_score,
-            "overall_label": overall_label,
-            "positive_count": positive_count,
-            "negative_count": negative_count,
-            "neutral_count": neutral_count,
-            "total_articles": len(news_items),
-            "articles": articles
+            "model_name": self.model_name,
+            "device": DEVICE,
+            "is_loaded": self.is_loaded,
+            "fallback_to_textblob": self.fallback_to_textblob,
+            "cache_dir": str(MODEL_CACHE_DIR),
         }
-    
-    def get_sentiment_impact(self, sentiment_score: float) -> Dict:
-        """
-        Determine impact level of sentiment
-        
-        Args:
-            sentiment_score: Score from -1 to +1
-            
-        Returns:
-            {
-                "impact": str,
-                "weight": float,
-                "reason": str
-            }
-        """
-        abs_score = abs(sentiment_score)
-        
-        if abs_score < 0.15:
-            return {
-                "impact": "LOW",
-                "weight": 0.1,
-                "reason": "Sentimen netral, tidak mempengaruhi keputusan"
-            }
-        elif abs_score < 0.4:
-            return {
-                "impact": "MODERATE",
-                "weight": 0.25,
-                "reason": "Sentimen cukup kuat, jadi pertimbangan tambahan"
-            }
-        elif abs_score < 0.7:
-            return {
-                "impact": "HIGH",
-                "weight": 0.4,
-                "reason": "Sentimen kuat, bobot signifikan dalam keputusan"
-            }
-        else:
-            return {
-                "impact": "VERY_HIGH",
-                "weight": 0.5,
-                "reason": "Sentimen sangat kuat (breaking news?), bobot maksimal"
-            }
-
-
-# === USAGE EXAMPLE ===
-
-async def example_usage():
-    """Example how to use FinBERTAnalyzer"""
-    
-    # Initialize
-    analyzer = FinBERTAnalyzer()
-    await analyzer.initialize()
-    
-    # Single text analysis
-    text = "Bitcoin reaches new all-time high as institutional adoption accelerates"
-    result = analyzer.analyze_text(text)
-    print(f"Text: {text}")
-    print(f"Sentiment: {result['label']} (score: {result['sentiment_score']:.3f})")
-    
-    # Batch analysis
-    texts = [
-        "Crypto market crashes amid regulatory concerns",
-        "Ethereum 2.0 upgrade shows promising results",
-        "Bitcoin price consolidates around key support level"
-    ]
-    results = analyzer.analyze_batch(texts)
-    print(f"\nBatch analysis: {len(results)} texts")
-    for text, result in zip(texts, results):
-        print(f"  {result['label']}: {text[:50]}...")
-    
-    # News batch analysis
-    news_items = [
-        {"title": "Bitcoin surges", "summary": "BTC up 10%", "source": "CoinDesk"},
-        {"title": "Market crash", "summary": "Crypto down 20%", "source": "CoinTelegraph"}
-    ]
-    news_result = analyzer.analyze_news_batch(news_items)
-    print(f"\nNews analysis: {news_result['overall_label']} ({news_result['overall_score']:+.3f})")
-
-
-if __name__ == "__main__":
-    asyncio.run(example_usage())
