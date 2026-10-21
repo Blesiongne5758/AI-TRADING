@@ -99,7 +99,9 @@ sentencepiece==0.1.99        # Tokenizer untuk FinBERT
 tweepy==4.14.0               # Twitter/X API client
 requests==2.31.0             # HTTP client untuk news APIs
 scikit-learn==1.4.0          # Anomaly detection & ML utilities
-aiocache==0.12.2             # Async caching library
 tenacity==8.2.3              # Retry logic untuk API calls
 
-# Note: aiohttp, pandas, numpy sudah ada di section sebelumnya
+# Note: 
+# - aiohttp, pandas, numpy sudah ada di section sebelumnya
+# - Cache system menggunakan SimpleCache (built-in, no external dependency)
+# - Tidak perlu install aiocache

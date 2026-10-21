@@ -87,7 +87,7 @@ class TwitterAnalyzer:
             "max_results": max_results
         }
         
-        cached = await cache.get("tweets", cache_key, AdvancedAIConfig.CACHE_TTL_TWEETS)
+        cached = await cache.get("tweets", cache_key)
         if cached:
             logger.info(f"✅ Twitter cache hit: {len(cached)} tweets")
             return cached
@@ -129,7 +129,7 @@ class TwitterAnalyzer:
                     })
                 
                 # Cache results
-                await cache.set("tweets", cache_key, tweets)
+                await cache.set("tweets", tweets, AdvancedAIConfig.CACHE_TTL_TWEETS, cache_key)
                 
                 logger.info(f"✅ Fetched {len(tweets)} tweets from Twitter")
                 return tweets
@@ -171,7 +171,7 @@ class TwitterAnalyzer:
             "time": time_filter
         }
         
-        cached = await cache.get("tweets", cache_key, AdvancedAIConfig.CACHE_TTL_TWEETS)
+        cached = await cache.get("tweets", cache_key)
         if cached:
             logger.info(f"✅ Reddit cache hit: {len(cached)} posts")
             return cached
@@ -215,7 +215,7 @@ class TwitterAnalyzer:
                     })
                 
                 # Cache results
-                await cache.set("tweets", cache_key, posts)
+                await cache.set("tweets", posts, AdvancedAIConfig.CACHE_TTL_TWEETS, cache_key)
                 
                 logger.info(f"✅ Fetched {len(posts)} posts from r/{subreddit}")
                 return posts
@@ -260,7 +260,7 @@ class TwitterAnalyzer:
             "limit": limit
         }
         
-        cached = await cache.get("tweets", cache_key, AdvancedAIConfig.CACHE_TTL_TWEETS)
+        cached = await cache.get("tweets", cache_key)
         if cached:
             logger.info(f"✅ Telegram cache hit: {len(cached)} messages")
             return cached
@@ -291,7 +291,7 @@ class TwitterAnalyzer:
                     })
                 
                 # Cache results
-                await cache.set("tweets", cache_key, messages)
+                await cache.set("tweets", messages, AdvancedAIConfig.CACHE_TTL_TWEETS, cache_key)
                 
                 logger.info(f"✅ Fetched {len(messages)} messages from Telegram")
                 return messages

@@ -111,7 +111,7 @@ class NewsAPIClient:
             "filter": filter_type
         }
         
-        cached = await cache.get("news", cache_key, AdvancedAIConfig.CACHE_TTL_NEWS)
+        cached = await cache.get("news", cache_key)
         if cached:
             logger.info(f"✅ CryptoPanic cache hit: {len(cached)} articles")
             return cached
@@ -154,7 +154,7 @@ class NewsAPIClient:
                     })
                 
                 # Cache results
-                await cache.set("news", cache_key, articles)
+                await cache.set("news", articles, AdvancedAIConfig.CACHE_TTL_NEWS, cache_key)
                 
                 logger.info(f"✅ Fetched {len(articles)} articles from CryptoPanic")
                 return articles
@@ -192,7 +192,7 @@ class NewsAPIClient:
             "days": days_back
         }
         
-        cached = await cache.get("news", cache_key, AdvancedAIConfig.CACHE_TTL_NEWS)
+        cached = await cache.get("news", cache_key)
         if cached:
             logger.info(f"✅ NewsAPI cache hit: {len(cached)} articles")
             return cached
@@ -234,7 +234,7 @@ class NewsAPIClient:
                     })
                 
                 # Cache results
-                await cache.set("news", cache_key, articles)
+                await cache.set("news", articles, AdvancedAIConfig.CACHE_TTL_NEWS, cache_key)
                 
                 logger.info(f"✅ Fetched {len(articles)} articles from NewsAPI")
                 return articles
@@ -265,7 +265,7 @@ class NewsAPIClient:
             "limit": limit
         }
         
-        cached = await cache.get("news", cache_key, AdvancedAIConfig.CACHE_TTL_NEWS)
+        cached = await cache.get("news", cache_key)
         if cached:
             logger.info(f"✅ CoinGecko cache hit: {len(cached)} articles")
             return cached
@@ -303,7 +303,7 @@ class NewsAPIClient:
                         })
                 
                 # Cache results
-                await cache.set("news", cache_key, articles)
+                await cache.set("news", articles, AdvancedAIConfig.CACHE_TTL_NEWS, cache_key)
                 
                 logger.info(f"✅ Fetched {len(articles)} articles from CoinGecko")
                 return articles

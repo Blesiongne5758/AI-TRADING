@@ -86,7 +86,7 @@ class SentimentAggregator:
             "include_social": include_social
         }
         
-        cached = await cache.get("sentiment", cache_key, 300)  # 5 min cache
+        cached = await cache.get("sentiment", cache_key)
         if cached:
             logger.info("✅ Sentiment cache hit")
             return cached
@@ -235,7 +235,7 @@ class SentimentAggregator:
                     })
         
         # Cache results
-        await cache.set("sentiment", cache_key, results)
+        await cache.set("sentiment", results, 300, cache_key)  # 5 min cache
         
         logger.info(f"\n✅ Sentiment aggregation complete:")
         logger.info(f"   Overall: {results['overall_label']} ({results['overall_score']:+.3f})")
