@@ -4,6 +4,10 @@ Report Generator - Generate visual reports from backtest results
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import seaborn as sns
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 from typing import Dict, List
 from datetime import datetime
 from loguru import logger
@@ -361,4 +365,244 @@ class ReportGenerator:
 
         except Exception as e:
             logger.error(f"Error generating summary: {e}")
+            return ""
+
+    def generate_interactive_report(self, output_dir: str = "backtest_reports") -> str:
+        """
+        Generate interactive HTML report with Plotly
+
+        Args:
+            output_dir: Directory to save reports
+
+        Returns:
+            Path to generated HTML report
+        """
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_path = f"{output_dir}/interactive_report_{timestamp}.html"
+
+            # Create subplots
+            fig = make_subplots(
+                rows=3,
+                cols=2,
+                subplot_titles=(
+                    "Equity Curve",
+                    "Drawdown",
+                    "Trade PnL Distribution",
+                    "Monthly Returns",
+                    "Cumulative Trades",
+                    "Risk Metrics",
+                ),
+                specs=[
+                    [{"secondary_y": False}, {"secondary_y": False}],
+                    [{"secondary_y": False}, {"secondary_y": False}],
+                    [{"secondary_y": False}, {"type": "indicator"}],
+                ],
+            )
+
+            # 1. Equity Curve
+            if not self.equity_df.empty:
+                fig.add_trace(
+                    go.Scatter(
+                        x=self.equity_df.index,
+                        y=self.equity_df["equity"],
+                        name="Equity",
+                        line=dict(color="#0ea5e9", width=2),
+                    ),
+                    row=1,
+                    col=1,
+                )
+
+            # 2. Drawdown
+            if not self.equity_df.empty:
+                equity = self.equity_df["equity"]
+                running_max = equity.expanding().max()
+                drawdown = (equity - running_max) / running_max * 100
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=drawdown.index,
+                        y=drawdown.values,
+                        name="Drawdown",
+                        fill="tozeroy",
+                        line=dict(color="#ef4444", width=1),
+                        fillcolor="rgba(239, 68, 68, 0.3)",
+                    ),
+                    row=1,
+                    col=2,
+                )
+
+            # 3. Trade PnL Distribution
+            if not self.trades_df.empty:
+                fig.add_trace(
+                    go.Histogram(
+                        x=self.trades_df["pnl"],
+                        name="PnL Distribution",
+                        marker_color="#10b981",
+                        opacity=0.7,
+                    ),
+                    row=2,
+                    col=1,
+                )
+
+            # 4. Monthly Returns
+            if not self.equity_df.empty:
+                monthly_returns = (
+                    self.equity_df["equity"].resample("M").last().pct_change() * 100
+                )
+                monthly_returns = monthly_returns.dropna()
+
+                if not monthly_returns.empty:
+                    fig.add_trace(
+                        go.Bar(
+                            x=monthly_returns.index,
+                            y=monthly_returns.values,
+                            name="Monthly Returns",
+                            marker_color=[
+                                "#10b981" if r >= 0 else "#ef4444"
+                                for r in monthly_returns.values
+                            ],
+                        ),
+                        row=2,
+                        col=2,
+                    )
+
+            # 5. Cumulative Trades
+            if not self.trades_df.empty:
+                cumulative_trades = range(1, len(self.trades_df) + 1)
+                fig.add_trace(
+                    go.Scatter(
+                        x=list(cumulative_trades),
+                        y=self.trades_df["pnl"].cumsum(),
+                        name="Cumulative PnL",
+                        line=dict(color="#f59e0b", width=2),
+                    ),
+                    row=3,
+                    col=1,
+                )
+
+            # 6. Risk Metrics Indicator
+            fig.add_trace(
+                go.Indicator(
+                    mode="gauge+number+delta",
+                    value=self.metrics.get("sharpe_ratio", 0),
+                    title={"text": "Sharpe Ratio"},
+                    gauge={
+                        "axis": {"range": [None, 3]},
+                        "bar": {"color": "#0ea5e9"},
+                        "steps": [
+                            {"range": [0, 1], "color": "#ef4444"},
+                            {"range": [1, 2], "color": "#f59e0b"},
+                            {"range": [2, 3], "color": "#10b981"},
+                        ],
+                    },
+                ),
+                row=3,
+                col=2,
+            )
+
+            # Update layout
+            fig.update_layout(
+                title_text=f"Backtest Report - {timestamp}",
+                showlegend=True,
+                height=1200,
+                width=1400,
+            )
+
+            # Save to HTML
+            fig.write_html(report_path)
+
+            logger.info(f"Interactive report saved: {report_path}")
+            return report_path
+
+        except Exception as e:
+            logger.error(f"Error generating interactive report: {e}")
+            return ""
+
+    def generate_seaborn_report(self, output_dir: str = "backtest_reports") -> str:
+        """
+        Generate statistical reports with Seaborn
+
+        Args:
+            output_dir: Directory to save reports
+
+        Returns:
+            Path to generated report
+        """
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_path = f"{output_dir}/statistical_report_{timestamp}.png"
+
+            # Set seaborn style
+            sns.set_theme(style="darkgrid")
+
+            # Create figure with subplots
+            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+            # 1. PnL Distribution with KDE
+            if not self.trades_df.empty:
+                sns.histplot(
+                    data=self.trades_df,
+                    x="pnl",
+                    kde=True,
+                    ax=axes[0, 0],
+                    color="#0ea5e9",
+                )
+                axes[0, 0].set_title("Trade PnL Distribution")
+                axes[0, 0].axvline(0, color="red", linestyle="--")
+
+            # 2. Win/Loss Comparison
+            if not self.trades_df.empty:
+                win_loss = self.trades_df.copy()
+                win_loss["result"] = win_loss["pnl"].apply(
+                    lambda x: "Win" if x > 0 else "Loss"
+                )
+                sns.countplot(data=win_loss, x="result", ax=axes[0, 1], palette=["#ef4444", "#10b981"])
+                axes[0, 1].set_title("Win/Loss Distribution")
+
+            # 3. Trade Duration vs PnL
+            if not self.trades_df.empty and "entry_time" in self.trades_df.columns:
+                self.trades_df["duration_hours"] = (
+                    self.trades_df["exit_time"] - self.trades_df["entry_time"]
+                ).dt.total_seconds() / 3600
+
+                sns.scatterplot(
+                    data=self.trades_df,
+                    x="duration_hours",
+                    y="pnl",
+                    ax=axes[1, 0],
+                    hue="pnl",
+                    palette="RdYlGn",
+                    size="pnl",
+                    sizes=(20, 200),
+                )
+                axes[1, 0].set_title("Trade Duration vs PnL")
+                axes[1, 0].axhline(0, color="red", linestyle="--")
+
+            # 4. Cumulative Returns
+            if not self.equity_df.empty:
+                returns = self.equity_df["equity"].pct_change()
+                cumulative_returns = (1 + returns).cumprod() - 1
+
+                sns.lineplot(
+                    x=cumulative_returns.index,
+                    y=cumulative_returns.values * 100,
+                    ax=axes[1, 1],
+                    color="#10b981",
+                    linewidth=2,
+                )
+                axes[1, 1].set_title("Cumulative Returns (%)")
+                axes[1, 1].axhline(0, color="gray", linestyle="--")
+
+            plt.tight_layout()
+            plt.savefig(report_path, dpi=150, bbox_inches="tight")
+            plt.close()
+
+            logger.info(f"Statistical report saved: {report_path}")
+            return report_path
+
+        except Exception as e:
+            logger.error(f"Error generating seaborn report: {e}")
             return ""

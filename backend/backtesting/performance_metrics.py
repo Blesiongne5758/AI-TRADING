@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict
 from loguru import logger
+import empyrical
+from scipy import stats
 
 
 class PerformanceMetrics:
@@ -290,6 +292,169 @@ class PerformanceMetrics:
             return 0.0
 
         return avg_win / avg_loss
+
+    # ============================================
+    # ADVANCED METRICS (Empyrical & Scipy)
+    # ============================================
+
+    def annual_return(self) -> float:
+        """Calculate annualized return using empyrical"""
+        if self.equity_df.empty or len(self.equity_df) < 2:
+            return 0.0
+
+        returns = self.equity_df["equity"].pct_change().dropna()
+        
+        try:
+            # Annualize returns (assuming hourly data)
+            periods_per_year = 8760  # 24 * 365
+            annualized = empyrical.annual_return(returns, period="hourly")
+            return annualized * 100
+        except:
+            return self.cagr()
+
+    def annual_volatility(self) -> float:
+        """Calculate annualized volatility using empyrical"""
+        if self.equity_df.empty or len(self.equity_df) < 2:
+            return 0.0
+
+        returns = self.equity_df["equity"].pct_change().dropna()
+        
+        try:
+            annualized_vol = empyrical.annual_volatility(returns, period="hourly")
+            return annualized_vol * 100
+        except:
+            return 0.0
+
+    def alpha_beta(self, benchmark_returns: pd.Series = None) -> Dict[str, float]:
+        """
+        Calculate alpha and beta using empyrical
+        
+        Args:
+            benchmark_returns: Benchmark returns series (optional)
+        
+        Returns:
+            Dictionary with alpha and beta
+        """
+        if self.equity_df.empty or len(self.equity_df) < 2:
+            return {"alpha": 0.0, "beta": 0.0}
+
+        returns = self.equity_df["equity"].pct_change().dropna()
+        
+        # If no benchmark, use zero returns
+        if benchmark_returns is None:
+            benchmark_returns = pd.Series(0, index=returns.index)
+        
+        try:
+            alpha, beta = empyrical.alpha_beta(returns, benchmark_returns)
+            return {"alpha": alpha, "beta": beta}
+        except:
+            return {"alpha": 0.0, "beta": 0.0}
+
+    def information_ratio(self, benchmark_returns: pd.Series = None) -> float:
+        """
+        Calculate information ratio using empyrical
+        
+        Args:
+            benchmark_returns: Benchmark returns series (optional)
+        
+        Returns:
+            Information ratio
+        """
+        if self.equity_df.empty or len(self.equity_df) < 2:
+            return 0.0
+
+        returns = self.equity_df["equity"].pct_change().dropna()
+        
+        if benchmark_returns is None:
+            benchmark_returns = pd.Series(0, index=returns.index)
+        
+        try:
+            ir = empyrical.information_ratio(returns, benchmark_returns)
+            return ir
+        except:
+            return 0.0
+
+    def tail_ratio(self) -> float:
+        """
+        Calculate tail ratio (right tail / left tail) using empyrical
+        
+        Returns:
+            Tail ratio
+        """
+        if self.equity_df.empty or len(self.equity_df) < 2:
+            return 0.0
+
+        returns = self.equity_df["equity"].pct_change().dropna()
+        
+        try:
+            tail_ratio = empyrical.tail_ratio(returns)
+            return tail_ratio
+        except:
+            return 0.0
+
+    def skewness(self) -> float:
+        """Calculate return distribution skewness using scipy"""
+        if self.equity_df.empty or len(self.equity_df) < 2:
+            return 0.0
+
+        returns = self.equity_df["equity"].pct_change().dropna()
+        
+        try:
+            skew = stats.skew(returns)
+            return skew
+        except:
+            return 0.0
+
+    def kurtosis(self) -> float:
+        """Calculate return distribution kurtosis using scipy"""
+        if self.equity_df.empty or len(self.equity_df) < 2:
+            return 0.0
+
+        returns = self.equity_df["equity"].pct_change().dropna()
+        
+        try:
+            kurt = stats.kurtosis(returns)
+            return kurt
+        except:
+            return 0.0
+
+    def jarque_bera_test(self) -> Dict[str, float]:
+        """
+        Perform Jarque-Bera test for normality using scipy
+        
+        Returns:
+            Dictionary with test statistic and p-value
+        """
+        if self.equity_df.empty or len(self.equity_df) < 2:
+            return {"statistic": 0.0, "p_value": 1.0}
+
+        returns = self.equity_df["equity"].pct_change().dropna()
+        
+        try:
+            jb_stat, p_value = stats.jarque_bera(returns)
+            return {"statistic": jb_stat, "p_value": p_value}
+        except:
+            return {"statistic": 0.0, "p_value": 1.0}
+
+    def calculate_advanced_metrics(self) -> Dict:
+        """
+        Calculate all advanced metrics
+        
+        Returns:
+            Dictionary with advanced metrics
+        """
+        metrics = {
+            "annual_return": self.annual_return(),
+            "annual_volatility": self.annual_volatility(),
+            "alpha_beta": self.alpha_beta(),
+            "information_ratio": self.information_ratio(),
+            "tail_ratio": self.tail_ratio(),
+            "skewness": self.skewness(),
+            "kurtosis": self.kurtosis(),
+            "jarque_bera_test": self.jarque_bera_test(),
+        }
+
+        return metrics
 
     def print_summary(self):
         """Print performance summary"""
