@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from data_collector.database import DatabaseManager
 from .data_loader import DataLoader
 from .backtest_data_loader import BacktestDataLoader
-from .strategy_runner import StrategyRunner
+from .strategy_runner import StrategyRunner, BacktestResult, strategy_rsi_macd_ema
 from .performance_metrics import PerformanceMetrics
 from .report_generator import ReportGenerator
 from .optimizer import StrategyOptimizer
@@ -112,19 +112,55 @@ async def run_backtest(
 
     # Run backtest
     logger.info("\n🏃 Running backtest...")
+    logger.info("   Strategy: RSI + MACD + EMA")
+    
     runner = StrategyRunner(
         initial_balance=initial_balance,
-        max_risk_per_trade=0.02,  # 2% risk per trade
-        trading_fee=0.001,  # 0.1% fee
+        trading_fee_percent=0.1,  # 0.1% fee
+        max_risk_per_trade=2.0,  # 2% risk per trade
     )
 
-    result = await runner.run(candles_df, news_data)
+    # Use the new strategy runner with example strategy
+    result = runner.run_backtest(
+        data=candles_df,
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy_func=strategy_rsi_macd_ema,
+        strategy_params={},  # Default parameters
+    )
+
+    # Convert BacktestResult to format expected by PerformanceMetrics
+    trades_list = [
+        {
+            "symbol": trade.symbol,
+            "side": trade.side,
+            "entry_price": trade.entry_price,
+            "exit_price": trade.exit_price,
+            "quantity": trade.quantity,
+            "entry_time": trade.entry_time,
+            "exit_time": trade.exit_time,
+            "pnl": trade.pnl,
+            "pnl_percent": trade.pnl_percent,
+            "fee": trade.fee,
+            "exit_reason": trade.exit_reason,
+            "holding_period": trade.holding_period,
+        }
+        for trade in result.trades
+    ]
+
+    # Convert equity curve to format expected by PerformanceMetrics
+    equity_list = [
+        {
+            "timestamp": point["timestamp"],
+            "equity": point["balance"],
+            "price": point["price"],
+        }
+        for point in result.equity_curve
+    ]
 
     # Calculate metrics
     logger.info("\n📈 Calculating performance metrics...")
-    metrics_calc = PerformanceMetrics(
-        result["trades"], result["equity_curve"]
-    )
+    metrics_calc = PerformanceMetrics(trades_list, equity_list)
     metrics = metrics_calc.calculate_all()
 
     # Print summary
@@ -132,7 +168,7 @@ async def run_backtest(
 
     # Generate report
     logger.info("\n📊 Generating visual report...")
-    report_gen = ReportGenerator(result["trades"], result["equity_curve"], metrics)
+    report_gen = ReportGenerator(trades_list, equity_list, metrics)
     report_path = report_gen.generate_report()
 
     if report_path:
@@ -207,14 +243,22 @@ async def run_optimization(
         logger.error("No data available for optimization")
         return
 
-    # Define parameter grid
+    # Define parameter grid for strategy optimization
     param_grid = {
-        "max_risk_per_trade": [0.01, 0.02, 0.03],
-        "trading_fee": [0.0005, 0.001, 0.0015],
+        "rsi_period": [10, 14, 20],
+        "rsi_oversold": [25, 30, 35],
+        "rsi_overbought": [65, 70, 75],
     }
 
     # Run optimization
     logger.info("\n🔍 Running grid search optimization...")
+    logger.info("   Strategy: RSI + MACD + EMA")
+    logger.info(f"   Parameter grid: {param_grid}")
+    
+    # Set symbol and timeframe as attributes for optimizer
+    candles_df.attrs["symbol"] = symbol
+    candles_df.attrs["timeframe"] = timeframe
+    
     optimizer = StrategyOptimizer(candles_df, news_data)
 
     best_params, best_metrics, all_results = optimizer.optimize(

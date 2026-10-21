@@ -1,321 +1,328 @@
 """
-Strategy Runner - Execute trading strategy candle-by-candle
+Strategy Runner
+Menjalankan strategi trading candle-by-candle dengan integritas tinggi
 """
 import pandas as pd
-from typing import List, Dict, Optional, Callable
+from typing import Dict, List, Optional, Callable
 from datetime import datetime
 from loguru import logger
-from analysis.technical_indicators import TechnicalAnalyzer
-from analysis.sentiment_analysis import SentimentAnalyzer
-from analysis.signal_generator import SignalGenerator
+from dataclasses import dataclass, field
+
+
+@dataclass
+class BacktestTrade:
+    """Representasi satu trade dalam backtest"""
+    id: int
+    symbol: str
+    side: str  # 'long' atau 'short'
+    entry_time: datetime
+    entry_price: float
+    quantity: float
+    stop_loss: float
+    take_profit: float
+    exit_time: Optional[datetime] = None
+    exit_price: Optional[float] = None
+    exit_reason: Optional[str] = None
+    pnl: float = 0.0
+    pnl_percent: float = 0.0
+    fee: float = 0.0
+    holding_period: Optional[float] = None  # dalam jam
+
+
+@dataclass
+class BacktestResult:
+    """Hasil lengkap backtest"""
+    symbol: str
+    timeframe: str
+    start_date: datetime
+    end_date: datetime
+    initial_balance: float
+    final_balance: float
+    trades: List[BacktestTrade] = field(default_factory=list)
+    equity_curve: List[Dict] = field(default_factory=list)
+    parameters: Dict = field(default_factory=dict)
 
 
 class StrategyRunner:
-    """Run trading strategy on historical data"""
+    """Menjalankan strategi trading pada data historis"""
 
     def __init__(
         self,
         initial_balance: float = 10000.0,
-        max_risk_per_trade: float = 0.02,
-        trading_fee: float = 0.001,
+        trading_fee_percent: float = 0.1,
+        max_risk_per_trade: float = 2.0,
     ):
-        """
-        Initialize strategy runner
-
-        Args:
-            initial_balance: Starting balance
-            max_risk_per_trade: Max risk per trade (e.g., 0.02 = 2%)
-            trading_fee: Trading fee per trade (e.g., 0.001 = 0.1%)
-        """
         self.initial_balance = initial_balance
+        self.trading_fee_percent = trading_fee_percent
         self.max_risk_per_trade = max_risk_per_trade
-        self.trading_fee = trading_fee
 
-        # Analysis components
-        self.tech_analyzer = TechnicalAnalyzer()
-        self.sentiment_analyzer = SentimentAnalyzer(use_finbert=False)
-        self.signal_generator = SignalGenerator()
+    def run_backtest(
+        self,
+        data: pd.DataFrame,
+        symbol: str,
+        timeframe: str,
+        strategy_func: Callable,
+        strategy_params: Dict = None,
+    ) -> BacktestResult:
+        """
+        Menjalankan backtest candle-by-candle
+        
+        PENTING: Strategi hanya boleh melihat data hingga candle saat ini.
+        Tidak boleh melihat candle masa depan (lookahead bias prevention).
+        
+        Args:
+            data: DataFrame OHLCV historis
+            symbol: Trading pair
+            timeframe: Interval candle
+            strategy_func: Function yang menerima (data_slice, params) dan return signal
+            strategy_params: Parameter strategi (untuk optimization)
+            
+        Returns:
+            BacktestResult dengan semua trades dan equity curve
+        """
+        if strategy_params is None:
+            strategy_params = {}
+
+        logger.info(f"🔬 Running backtest: {symbol} [{timeframe}]")
+        logger.info(f"   Data: {len(data)} candles ({data.index[0]} → {data.index[-1]})")
+        logger.info(f"   Strategy params: {strategy_params}")
 
         # State
-        self.balance = initial_balance
-        self.positions: List[Dict] = []
-        self.trades: List[Dict] = []
-        self.equity_curve: List[Dict] = []
+        balance = self.initial_balance
+        available_balance = self.initial_balance
+        position: Optional[BacktestTrade] = None
+        trades: List[BacktestTrade] = []
+        equity_curve: List[Dict] = []
+        trade_id = 0
 
-    async def run(
-        self,
-        candles_df: pd.DataFrame,
-        news_data: Optional[List[Dict]] = None,
-        strategy_func: Optional[Callable] = None,
-    ) -> Dict:
-        """
-        Run strategy on historical data
+        # Minimum data untuk indikator (EMA 200 butuh 200 candle)
+        min_candles = 200
 
-        Args:
-            candles_df: DataFrame with OHLCV data
-            news_data: List of news articles (optional)
-            strategy_func: Custom strategy function (optional)
+        # Loop candle-by-candle (NO LOOKAHEAD!)
+        for i in range(min_candles, len(data)):
+            current_candle = data.iloc[i]
+            current_time = data.index[i]
+            current_price = current_candle["close"]
 
-        Returns:
-            Dictionary with backtest results
-        """
-        logger.info(f"Starting backtest with {len(candles_df)} candles")
+            # Data yang tersedia untuk strategi (hanya sampai candle saat ini)
+            historical_slice = data.iloc[:i+1]
 
-        # Reset state
-        self.balance = self.initial_balance
-        self.positions = []
-        self.trades = []
-        self.equity_curve = []
+            # === 1. Cek Exit Conditions (jika ada posisi terbuka) ===
+            if position is not None:
+                exit_result = self._check_exit_conditions(
+                    position=position,
+                    high=current_candle["high"],
+                    low=current_candle["low"],
+                    close=current_price,
+                )
 
-        # Run candle-by-candle
-        for i in range(len(candles_df)):
-            current_candle = candles_df.iloc[i]
-            current_time = candles_df.index[i]
-
-            # Get historical data up to current candle (no look-ahead bias)
-            historical_data = candles_df.iloc[: i + 1]
-
-            # Get news up to current time
-            current_news = []
-            if news_data:
-                current_news = [
-                    n
-                    for n in news_data
-                    if datetime.fromtimestamp(n["published_date"] / 1000) <= current_time
-                ]
-
-            # Check existing positions
-            await self._check_positions(current_candle, current_time)
-
-            # Generate signal if no open position
-            if not self.positions:
-                if strategy_func:
-                    # Use custom strategy
-                    signal = strategy_func(historical_data, current_news)
-                else:
-                    # Use default AI strategy
-                    signal = await self._generate_signal(
-                        historical_data, current_news
+                if exit_result:
+                    # Close position
+                    position.exit_time = current_time
+                    position.exit_price = exit_result["exit_price"]
+                    position.exit_reason = exit_result["exit_reason"]
+                    position.holding_period = (
+                        (current_time - position.entry_time).total_seconds() / 3600
                     )
 
-                # Execute signal
-                if signal and signal.get("action") in ["BUY", "STRONG_BUY", "SELL", "STRONG_SELL"]:
-                    await self._execute_signal(signal, current_candle, current_time)
+                    # Hitung PnL
+                    if position.side == "long":
+                        gross_pnl = (position.exit_price - position.entry_price) * position.quantity
+                    else:
+                        gross_pnl = (position.entry_price - position.exit_price) * position.quantity
 
-            # Record equity
-            equity = self._calculate_equity(current_candle)
-            self.equity_curve.append(
-                {
-                    "timestamp": current_time,
-                    "equity": equity,
-                    "balance": self.balance,
-                    "open_positions": len(self.positions),
-                }
-            )
+                    # Fee exit
+                    exit_value = position.exit_price * position.quantity
+                    exit_fee = exit_value * (self.trading_fee_percent / 100)
+                    position.fee += exit_fee
+                    position.pnl = gross_pnl - exit_fee
+                    position.pnl_percent = (position.pnl / (position.entry_price * position.quantity)) * 100
 
-        # Close any remaining positions at last candle
-        if self.positions:
-            last_candle = candles_df.iloc[-1]
-            last_time = candles_df.index[-1]
-            for pos in self.positions[:]:
-                await self._close_position(pos, last_candle["close"], last_time, "BACKTEST_END")
+                    # Update balance
+                    available_balance += (position.entry_price * position.quantity) + position.pnl
+                    balance = available_balance
 
-        logger.info(
-            f"Backtest completed: {len(self.trades)} trades, "
-            f"Final equity: ${self._calculate_equity(candles_df.iloc[-1]):,.2f}"
+                    trades.append(position)
+                    position = None
+
+            # === 2. Generate Signal (hanya jika tidak ada posisi) ===
+            if position is None:
+                try:
+                    signal = strategy_func(historical_slice, strategy_params)
+                except Exception as e:
+                    logger.debug(f"Strategy error at {current_time}: {e}")
+                    signal = None
+
+                # Eksekusi jika ada signal
+                if signal and signal.get("action") in ["BUY", "SELL"]:
+                    position = self._open_position(
+                        signal=signal,
+                        symbol=symbol,
+                        entry_time=current_time,
+                        entry_price=current_price,
+                        balance=available_balance,
+                        trade_id=trade_id,
+                    )
+                    if position:
+                        trade_id += 1
+                        # Reserve margin
+                        position_value = position.entry_price * position.quantity
+                        entry_fee = position_value * (self.trading_fee_percent / 100)
+                        position.fee = entry_fee
+                        available_balance -= (position_value + entry_fee)
+
+            # === 3. Record Equity ===
+            unrealized_pnl = 0.0
+            if position is not None:
+                if position.side == "long":
+                    unrealized_pnl = (current_price - position.entry_price) * position.quantity
+                else:
+                    unrealized_pnl = (position.entry_price - current_price) * position.quantity
+
+            equity_curve.append({
+                "timestamp": current_time,
+                "balance": balance + unrealized_pnl,
+                "price": current_price,
+                "in_position": position is not None,
+            })
+
+        # Close posisi yang masih terbuka di akhir backtest
+        if position is not None:
+            last_candle = data.iloc[-1]
+            position.exit_time = data.index[-1]
+            position.exit_price = last_candle["close"]
+            position.exit_reason = "BACKTEST_END"
+            
+            if position.side == "long":
+                gross_pnl = (position.exit_price - position.entry_price) * position.quantity
+            else:
+                gross_pnl = (position.entry_price - position.exit_price) * position.quantity
+            
+            exit_fee = (position.exit_price * position.quantity) * (self.trading_fee_percent / 100)
+            position.pnl = gross_pnl - exit_fee
+            position.pnl_percent = (position.pnl / (position.entry_price * position.quantity)) * 100
+            trades.append(position)
+            available_balance += (position.entry_price * position.quantity) + position.pnl
+
+        result = BacktestResult(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=data.index[0],
+            end_date=data.index[-1],
+            initial_balance=self.initial_balance,
+            final_balance=available_balance,
+            trades=trades,
+            equity_curve=equity_curve,
+            parameters=strategy_params,
         )
 
+        logger.info(f"✅ Backtest complete: {len(trades)} trades")
+        logger.info(f"   Final balance: ${result.final_balance:,.2f}")
+        logger.info(f"   Return: {((result.final_balance/self.initial_balance)-1)*100:+.2f}%")
+
+        return result
+
+    def _check_exit_conditions(
+        self, position: BacktestTrade, high: float, low: float, close: float
+    ) -> Optional[Dict]:
+        """Cek apakah posisi harus ditutup (SL/TP hit)"""
+        if position.side == "long":
+            # Cek SL dulu (prioritas)
+            if low <= position.stop_loss:
+                return {"exit_price": position.stop_loss, "exit_reason": "STOP_LOSS"}
+            # Cek TP
+            if high >= position.take_profit:
+                return {"exit_price": position.take_profit, "exit_reason": "TAKE_PROFIT"}
+        else:  # short
+            if high >= position.stop_loss:
+                return {"exit_price": position.stop_loss, "exit_reason": "STOP_LOSS"}
+            if low <= position.take_profit:
+                return {"exit_price": position.take_profit, "exit_reason": "TAKE_PROFIT"}
+
+        return None
+
+    def _open_position(
+        self,
+        signal: Dict,
+        symbol: str,
+        entry_time: datetime,
+        entry_price: float,
+        balance: float,
+        trade_id: int,
+    ) -> Optional[BacktestTrade]:
+        """Membuka posisi baru"""
+        side = "long" if signal["action"] == "BUY" else "short"
+        position_size_percent = signal.get("position_size_percent", 10)
+        position_value = balance * (position_size_percent / 100)
+        quantity = position_value / entry_price
+
+        return BacktestTrade(
+            id=trade_id,
+            symbol=symbol,
+            side=side,
+            entry_time=entry_time,
+            entry_price=entry_price,
+            quantity=quantity,
+            stop_loss=signal["stop_loss"],
+            take_profit=signal["take_profit"],
+        )
+
+
+# === CONTOH STRATEGI (untuk testing) ===
+
+def strategy_rsi_macd_ema(data: pd.DataFrame, params: Dict) -> Optional[Dict]:
+    """
+    Contoh strategi: RSI + MACD + EMA
+    BUY jika: RSI < 30 AND MACD crossover up AND price > EMA200
+    SELL jika: RSI > 70 AND MACD crossover down
+    """
+    import pandas_ta as ta
+
+    # Parameters (bisa di-optimize)
+    rsi_period = params.get("rsi_period", 14)
+    rsi_oversold = params.get("rsi_oversold", 30)
+    rsi_overbought = params.get("rsi_overbought", 70)
+
+    if len(data) < 200:
+        return None
+
+    close = data["close"]
+    
+    # Hitung indikator
+    rsi = ta.rsi(close, length=rsi_period)
+    macd = ta.macd(close, fast=12, slow=26, signal=9)
+    ema200 = ta.ema(close, length=200)
+
+    if rsi.iloc[-1] != rsi.iloc[-1]:  # NaN check
+        return None
+
+    current_price = float(close.iloc[-1])
+    current_rsi = float(rsi.iloc[-1])
+    current_macd_hist = float(macd.iloc[-1, 1])
+    prev_macd_hist = float(macd.iloc[-2, 1])
+    current_ema200 = float(ema200.iloc[-1])
+
+    # ATR untuk SL/TP
+    atr = ta.atr(data["high"], data["low"], close, length=14)
+    current_atr = float(atr.iloc[-1])
+
+    # BUY signal
+    if (current_rsi < rsi_oversold and 
+        current_macd_hist > 0 and prev_macd_hist <= 0 and
+        current_price > current_ema200):
+        
+        sl = current_price - (current_atr * 2)
+        tp = current_price + (current_atr * 4)  # RR 1:2
+        
         return {
-            "trades": self.trades,
-            "equity_curve": self.equity_curve,
-            "final_balance": self.balance,
-            "total_trades": len(self.trades),
+            "action": "BUY",
+            "stop_loss": sl,
+            "take_profit": tp,
+            "position_size_percent": 10,
         }
 
-    async def _generate_signal(
-        self, candles_df: pd.DataFrame, news_data: List[Dict]
-    ) -> Optional[Dict]:
-        """Generate trading signal using AI analysis"""
-        try:
-            # Need at least 200 candles for analysis
-            if len(candles_df) < 200:
-                return None
+    # SELL signal (untuk close long atau open short)
+    if current_rsi > rsi_overbought and current_macd_hist < 0 and prev_macd_hist >= 0:
+        return {"action": "SELL"}
 
-            # Technical analysis
-            candles_list = candles_df.reset_index().to_dict("records")
-            tech_result = self.tech_analyzer.calculate_all(candles_list)
-            if not tech_result:
-                return None
-
-            # Sentiment analysis
-            sentiment_result = self.sentiment_analyzer.analyze_news_batch(news_data)
-
-            # Generate signal
-            signal = self.signal_generator.generate_signal(
-                symbol="BACKTEST",
-                timeframe="1h",
-                technical_analysis=tech_result,
-                sentiment_analysis=sentiment_result,
-            )
-
-            return signal
-
-        except Exception as e:
-            logger.error(f"Error generating signal: {e}")
-            return None
-
-    async def _execute_signal(
-        self, signal: Dict, candle: pd.Series, timestamp: datetime
-    ):
-        """Execute trading signal"""
-        try:
-            action = signal.get("action")
-            suggested_actions = signal.get("suggested_actions", {})
-
-            if action in ["BUY", "STRONG_BUY"]:
-                side = "LONG"
-            elif action in ["SELL", "STRONG_SELL"]:
-                side = "SHORT"
-            else:
-                return
-
-            # Calculate position size based on risk
-            entry_price = candle["close"]
-            stop_loss = suggested_actions.get("stop_loss", entry_price * 0.98)
-            take_profit = suggested_actions.get("take_profit", entry_price * 1.04)
-
-            # Calculate risk per unit
-            if side == "LONG":
-                risk_per_unit = entry_price - stop_loss
-            else:
-                risk_per_unit = stop_loss - entry_price
-
-            if risk_per_unit <= 0:
-                return
-
-            # Calculate position size
-            max_risk_amount = self.balance * self.max_risk_per_trade
-            quantity = max_risk_amount / risk_per_unit
-
-            # Apply trading fee
-            position_value = quantity * entry_price
-            fee = position_value * self.trading_fee
-
-            if position_value + fee > self.balance:
-                logger.warning("Insufficient balance for trade")
-                return
-
-            # Deduct fee from balance
-            self.balance -= fee
-
-            # Create position
-            position = {
-                "side": side,
-                "entry_price": entry_price,
-                "quantity": quantity,
-                "stop_loss": stop_loss,
-                "take_profit": take_profit,
-                "entry_time": timestamp,
-                "entry_fee": fee,
-            }
-
-            self.positions.append(position)
-
-            logger.debug(
-                f"Opened {side} position @ ${entry_price:,.2f}, "
-                f"Qty: {quantity:.6f}, Fee: ${fee:.2f}"
-            )
-
-        except Exception as e:
-            logger.error(f"Error executing signal: {e}")
-
-    async def _check_positions(self, candle: pd.Series, timestamp: datetime):
-        """Check if any positions hit stop-loss or take-profit"""
-        positions_to_close = []
-
-        for pos in self.positions:
-            if pos["side"] == "LONG":
-                # Check stop-loss
-                if candle["low"] <= pos["stop_loss"]:
-                    positions_to_close.append((pos, pos["stop_loss"], "STOP_LOSS"))
-                # Check take-profit
-                elif candle["high"] >= pos["take_profit"]:
-                    positions_to_close.append((pos, pos["take_profit"], "TAKE_PROFIT"))
-            else:  # SHORT
-                # Check stop-loss
-                if candle["high"] >= pos["stop_loss"]:
-                    positions_to_close.append((pos, pos["stop_loss"], "STOP_LOSS"))
-                # Check take-profit
-                elif candle["low"] <= pos["take_profit"]:
-                    positions_to_close.append((pos, pos["take_profit"], "TAKE_PROFIT"))
-
-        # Close positions
-        for pos, exit_price, reason in positions_to_close:
-            await self._close_position(pos, exit_price, timestamp, reason)
-
-    async def _close_position(
-        self, position: Dict, exit_price: float, timestamp: datetime, reason: str
-    ):
-        """Close a position"""
-        try:
-            entry_price = position["entry_price"]
-            quantity = position["quantity"]
-            side = position["side"]
-
-            # Calculate PnL
-            if side == "LONG":
-                pnl = (exit_price - entry_price) * quantity
-            else:
-                pnl = (entry_price - exit_price) * quantity
-
-            # Apply trading fee
-            exit_value = quantity * exit_price
-            fee = exit_value * self.trading_fee
-            pnl_after_fee = pnl - fee
-
-            # Update balance
-            self.balance += exit_value - fee
-
-            # Record trade
-            trade = {
-                "side": side,
-                "entry_price": entry_price,
-                "exit_price": exit_price,
-                "quantity": quantity,
-                "entry_time": position["entry_time"],
-                "exit_time": timestamp,
-                "pnl": pnl_after_fee,
-                "pnl_percent": (pnl_after_fee / (entry_price * quantity)) * 100,
-                "entry_fee": position.get("entry_fee", 0),
-                "exit_fee": fee,
-                "reason": reason,
-            }
-
-            self.trades.append(trade)
-
-            # Remove from open positions
-            if position in self.positions:
-                self.positions.remove(position)
-
-            logger.debug(
-                f"Closed {side} position @ ${exit_price:,.2f}, "
-                f"PnL: ${pnl_after_fee:+,.2f} ({trade['pnl_percent']:+.2f}%), "
-                f"Reason: {reason}"
-            )
-
-        except Exception as e:
-            logger.error(f"Error closing position: {e}")
-
-    def _calculate_equity(self, current_candle: pd.Series) -> float:
-        """Calculate total equity (balance + unrealized PnL)"""
-        equity = self.balance
-
-        for pos in self.positions:
-            if pos["side"] == "LONG":
-                unrealized_pnl = (current_candle["close"] - pos["entry_price"]) * pos["quantity"]
-            else:
-                unrealized_pnl = (pos["entry_price"] - current_candle["close"]) * pos["quantity"]
-
-            equity += unrealized_pnl
-
-        return equity
+    return None

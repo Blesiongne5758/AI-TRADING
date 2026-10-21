@@ -39,6 +39,63 @@ backtesting/
 - Rate limiting untuk menghindari ban
 - **Use case**: Long-term backtesting
 
+## 🎯 Strategy Runner (NEW!)
+
+### Lookahead Bias Prevention
+Strategy runner yang baru memastikan **TIDAK ADA lookahead bias**:
+- ✅ Strategi hanya melihat data hingga candle saat ini
+- ✅ Loop candle-by-candle dengan strict data slicing
+- ✅ Exit conditions checked sebelum entry signals
+- ✅ No future data leakage
+
+### Example Strategy: RSI + MACD + EMA
+Strategi contoh yang sudah diimplementasikan:
+```python
+def strategy_rsi_macd_ema(data: pd.DataFrame, params: Dict) -> Optional[Dict]:
+    """
+    BUY jika: RSI < 30 AND MACD crossover up AND price > EMA200
+    SELL jika: RSI > 70 AND MACD crossover down
+    """
+```
+
+**Parameters yang bisa di-optimize:**
+- `rsi_period`: Periode RSI (default: 14)
+- `rsi_oversold`: Level oversold (default: 30)
+- `rsi_overbought`: Level overbought (default: 70)
+
+### Dataclass untuk Type Safety
+```python
+@dataclass
+class BacktestTrade:
+    id: int
+    symbol: str
+    side: str  # 'long' atau 'short'
+    entry_time: datetime
+    entry_price: float
+    quantity: float
+    stop_loss: float
+    take_profit: float
+    exit_time: Optional[datetime]
+    exit_price: Optional[float]
+    exit_reason: Optional[str]
+    pnl: float
+    pnl_percent: float
+    fee: float
+    holding_period: Optional[float]  # dalam jam
+
+@dataclass
+class BacktestResult:
+    symbol: str
+    timeframe: str
+    start_date: datetime
+    end_date: datetime
+    initial_balance: float
+    final_balance: float
+    trades: List[BacktestTrade]
+    equity_curve: List[Dict]
+    parameters: Dict
+```
+
 ## 🚀 Cara Menggunakan
 
 ### 1. Run Backtest
@@ -308,33 +365,69 @@ async def long_term_backtest():
     
     print(f"Loaded {len(candles_df)} candles")
     
-    # 2. Run backtest
+    # 2. Run backtest dengan strategy runner baru
+    from backtesting.strategy_runner import StrategyRunner, strategy_rsi_macd_ema
+    
     runner = StrategyRunner(
         initial_balance=10000.0,
-        max_risk_per_trade=0.02,
-        trading_fee=0.001,
+        trading_fee_percent=0.1,  # 0.1% fee
+        max_risk_per_trade=2.0,  # 2% risk
     )
     
-    result = await runner.run(candles_df, news_data=[])
+    # Set symbol dan timeframe sebagai attributes
+    candles_df.attrs["symbol"] = "BTC/USDT"
+    candles_df.attrs["timeframe"] = "1h"
     
-    # 3. Calculate metrics
-    metrics_calc = PerformanceMetrics(
-        result["trades"], 
-        result["equity_curve"]
+    # Run backtest dengan contoh strategi
+    result = runner.run_backtest(
+        data=candles_df,
+        symbol="BTC/USDT",
+        timeframe="1h",
+        strategy_func=strategy_rsi_macd_ema,
+        strategy_params={
+            "rsi_period": 14,
+            "rsi_oversold": 30,
+            "rsi_overbought": 70,
+        },
     )
     
+    # 3. Convert result ke format yang compatible
+    trades_list = [
+        {
+            "symbol": trade.symbol,
+            "side": trade.side,
+            "entry_price": trade.entry_price,
+            "exit_price": trade.exit_price,
+            "quantity": trade.quantity,
+            "entry_time": trade.entry_time,
+            "exit_time": trade.exit_time,
+            "pnl": trade.pnl,
+            "pnl_percent": trade.pnl_percent,
+            "fee": trade.fee,
+            "exit_reason": trade.exit_reason,
+            "holding_period": trade.holding_period,
+        }
+        for trade in result.trades
+    ]
+    
+    equity_list = [
+        {
+            "timestamp": point["timestamp"],
+            "equity": point["balance"],
+            "price": point["price"],
+        }
+        for point in result.equity_curve
+    ]
+    
+    # 4. Calculate metrics
+    metrics_calc = PerformanceMetrics(trades_list, equity_list)
     metrics = metrics_calc.calculate_all()
     metrics_calc.print_summary()
     
-    # 4. Generate reports
+    # 5. Generate reports
     from backtesting.report_generator import ReportGenerator
     
-    report_gen = ReportGenerator(
-        result["trades"],
-        result["equity_curve"],
-        metrics
-    )
-    
+    report_gen = ReportGenerator(trades_list, equity_list, metrics)
     report_gen.generate_report()
     report_gen.generate_interactive_report()
     report_gen.generate_seaborn_report()
@@ -360,19 +453,88 @@ async def multi_timeframe_backtest():
     await loader.close()
     
     # Run backtest on each timeframe
+    from backtesting.strategy_runner import strategy_rsi_macd_ema
+    
     for timeframe, candles_df in data.items():
         print(f"\n{'='*70}")
         print(f"Backtesting {timeframe} timeframe")
         print(f"{'='*70}")
         
-        runner = StrategyRunner(initial_balance=10000.0)
-        result = await runner.run(candles_df, [])
+        # Set attributes
+        candles_df.attrs["symbol"] = "BTC/USDT"
+        candles_df.attrs["timeframe"] = timeframe
         
-        metrics_calc = PerformanceMetrics(
-            result["trades"], 
-            result["equity_curve"]
+        runner = StrategyRunner(initial_balance=10000.0)
+        result = runner.run_backtest(
+            data=candles_df,
+            symbol="BTC/USDT",
+            timeframe=timeframe,
+            strategy_func=strategy_rsi_macd_ema,
+            strategy_params={},
         )
+        
+        # Convert result
+        trades_list = [{"pnl": t.pnl, "pnl_percent": t.pnl_percent} for t in result.trades]
+        equity_list = [{"timestamp": p["timestamp"], "equity": p["balance"]} for p in result.equity_curve]
+        
+        metrics_calc = PerformanceMetrics(trades_list, equity_list)
         metrics_calc.print_summary()
+```
+
+## 🎨 Custom Strategy
+
+Anda bisa membuat custom strategy function dengan signature:
+
+```python
+def my_strategy(data: pd.DataFrame, params: Dict) -> Optional[Dict]:
+    """
+    Custom strategy logic
+    
+    Args:
+        data: Historical candles UP TO CURRENT candle (no lookahead!)
+        params: Strategy parameters (untuk optimization)
+    
+    Returns:
+        Signal dictionary atau None
+        {
+            "action": "BUY" | "SELL",
+            "stop_loss": float,
+            "take_profit": float,
+            "position_size_percent": float,  # optional, default 10%
+        }
+    """
+    # IMPORTANT: data hanya berisi candle hingga saat ini
+    # JANGAN gunakan data.iloc[-1] untuk melihat masa depan!
+    
+    if len(data) < 200:
+        return None
+    
+    # Contoh: Simple moving average crossover
+    sma_20 = data['close'].rolling(20).mean().iloc[-1]
+    sma_50 = data['close'].rolling(50).mean().iloc[-1]
+    
+    current_price = float(data['close'].iloc[-1])
+    
+    # BUY signal
+    if sma_20 > sma_50:
+        return {
+            "action": "BUY",
+            "stop_loss": current_price * 0.98,  # 2% below entry
+            "take_profit": current_price * 1.06,  # 6% above entry
+            "position_size_percent": 10,
+        }
+    
+    return None
+
+# Use custom strategy
+runner = StrategyRunner(initial_balance=10000.0)
+result = runner.run_backtest(
+    data=candles_df,
+    symbol="BTC/USDT",
+    timeframe="1h",
+    strategy_func=my_strategy,  # Your custom strategy
+    strategy_params={},
+)
 ```
 
 ## 🎛️ Parameter Optimization
@@ -382,13 +544,18 @@ async def multi_timeframe_backtest():
 ```python
 from backtesting.optimizer import StrategyOptimizer
 
+# Optimize strategy parameters (bukan risk management)
 param_grid = {
-    'max_risk_per_trade': [0.01, 0.02, 0.03],
-    'trading_fee': [0.0005, 0.001, 0.0015],
-    # Add more parameters as needed
+    'rsi_period': [10, 14, 20],
+    'rsi_oversold': [25, 30, 35],
+    'rsi_overbought': [65, 70, 75],
 }
 
-optimizer = StrategyOptimizer(candles_df, news_data)
+# Set attributes untuk optimizer
+candles_df.attrs["symbol"] = "BTC/USDT"
+candles_df.attrs["timeframe"] = "1h"
+
+optimizer = StrategyOptimizer(candles_df, news_data=[])
 best_params, best_metrics, all_results = optimizer.optimize(
     param_grid=param_grid,
     metric_to_optimize='sharpe_ratio',
@@ -514,7 +681,10 @@ python -m data_collector.main_collector
 
 - ✅ Data loader dari database lokal (DataLoader)
 - ✅ Data loader dari Binance API (BacktestDataLoader) - untuk long-term backtest
-- ✅ Strategy runner (no look-ahead bias)
+- ✅ **NEW!** Strategy runner dengan lookahead bias prevention
+- ✅ **NEW!** Dataclass untuk type safety (BacktestTrade, BacktestResult)
+- ✅ **NEW!** Example strategy: RSI + MACD + EMA
+- ✅ **NEW!** Candle-by-candle execution dengan strict data slicing
 - ✅ Performance metrics (15+ basic + 8 advanced metrics)
 - ✅ Visual report generator (Matplotlib, Seaborn, Plotly)
 - ✅ Parameter optimizer (Grid search & Bayesian dengan Optuna)
@@ -524,4 +694,11 @@ python -m data_collector.main_collector
 
 ---
 
-**Your backtesting engine is production-ready! 📊🚀**
+**Your backtesting engine is production-ready with lookahead bias prevention! 📊🚀**
+
+Silakan jalankan backtest dengan strategy runner yang baru:
+
+```bash
+cd backend
+python -m backtesting.main_backtest --mode backtest --use-api --start-date 2022-01-01
+```

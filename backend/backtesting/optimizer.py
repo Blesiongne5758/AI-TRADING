@@ -6,7 +6,7 @@ from typing import List, Dict, Tuple, Optional
 from itertools import product
 from loguru import logger
 import optuna
-from .strategy_runner import StrategyRunner
+from .strategy_runner import StrategyRunner, strategy_rsi_macd_ema
 from .performance_metrics import PerformanceMetrics
 
 
@@ -63,21 +63,49 @@ class StrategyOptimizer:
                 # Run backtest with these parameters
                 runner = StrategyRunner(
                     initial_balance=initial_balance,
-                    max_risk_per_trade=params.get("max_risk_per_trade", 0.02),
-                    trading_fee=params.get("trading_fee", 0.001),
+                    trading_fee_percent=params.get("trading_fee_percent", 0.1),
+                    max_risk_per_trade=params.get("max_risk_per_trade", 2.0),
                 )
 
-                # Note: For full optimization, you'd need to modify StrategyRunner
-                # to accept custom parameters for indicators, thresholds, etc.
-                # For now, we'll just vary risk management parameters
+                # Run backtest with strategy function
+                result = runner.run_backtest(
+                    data=self.candles_df,
+                    symbol=self.candles_df.attrs.get("symbol", "BTC/USDT"),
+                    timeframe=self.candles_df.attrs.get("timeframe", "1h"),
+                    strategy_func=strategy_rsi_macd_ema,
+                    strategy_params=params,
+                )
 
-                import asyncio
-                result = asyncio.run(runner.run(self.candles_df, self.news_data))
+                # Convert BacktestResult to format expected by PerformanceMetrics
+                trades_list = [
+                    {
+                        "symbol": trade.symbol,
+                        "side": trade.side,
+                        "entry_price": trade.entry_price,
+                        "exit_price": trade.exit_price,
+                        "quantity": trade.quantity,
+                        "entry_time": trade.entry_time,
+                        "exit_time": trade.exit_time,
+                        "pnl": trade.pnl,
+                        "pnl_percent": trade.pnl_percent,
+                        "fee": trade.fee,
+                        "exit_reason": trade.exit_reason,
+                        "holding_period": trade.holding_period,
+                    }
+                    for trade in result.trades
+                ]
+
+                equity_list = [
+                    {
+                        "timestamp": point["timestamp"],
+                        "equity": point["balance"],
+                        "price": point["price"],
+                    }
+                    for point in result.equity_curve
+                ]
 
                 # Calculate metrics
-                metrics_calc = PerformanceMetrics(
-                    result["trades"], result["equity_curve"]
-                )
+                metrics_calc = PerformanceMetrics(trades_list, equity_list)
                 metrics = metrics_calc.calculate_all()
 
                 # Store result
@@ -234,17 +262,49 @@ class StrategyOptimizer:
                 # Run backtest with these parameters
                 runner = StrategyRunner(
                     initial_balance=initial_balance,
-                    max_risk_per_trade=params.get("max_risk_per_trade", 0.02),
-                    trading_fee=params.get("trading_fee", 0.001),
+                    trading_fee_percent=params.get("trading_fee_percent", 0.1),
+                    max_risk_per_trade=params.get("max_risk_per_trade", 2.0),
                 )
 
-                import asyncio
-                result = asyncio.run(runner.run(self.candles_df, self.news_data))
+                # Run backtest with strategy function
+                result = runner.run_backtest(
+                    data=self.candles_df,
+                    symbol=self.candles_df.attrs.get("symbol", "BTC/USDT"),
+                    timeframe=self.candles_df.attrs.get("timeframe", "1h"),
+                    strategy_func=strategy_rsi_macd_ema,
+                    strategy_params=params,
+                )
+
+                # Convert BacktestResult to format expected by PerformanceMetrics
+                trades_list = [
+                    {
+                        "symbol": trade.symbol,
+                        "side": trade.side,
+                        "entry_price": trade.entry_price,
+                        "exit_price": trade.exit_price,
+                        "quantity": trade.quantity,
+                        "entry_time": trade.entry_time,
+                        "exit_time": trade.exit_time,
+                        "pnl": trade.pnl,
+                        "pnl_percent": trade.pnl_percent,
+                        "fee": trade.fee,
+                        "exit_reason": trade.exit_reason,
+                        "holding_period": trade.holding_period,
+                    }
+                    for trade in result.trades
+                ]
+
+                equity_list = [
+                    {
+                        "timestamp": point["timestamp"],
+                        "equity": point["balance"],
+                        "price": point["price"],
+                    }
+                    for point in result.equity_curve
+                ]
 
                 # Calculate metrics
-                metrics_calc = PerformanceMetrics(
-                    result["trades"], result["equity_curve"]
-                )
+                metrics_calc = PerformanceMetrics(trades_list, equity_list)
                 metrics = metrics_calc.calculate_all()
 
                 # Return the metric to optimize
@@ -273,14 +333,47 @@ class StrategyOptimizer:
         # Run final backtest with best parameters
         runner = StrategyRunner(
             initial_balance=initial_balance,
-            max_risk_per_trade=best_params.get("max_risk_per_trade", 0.02),
-            trading_fee=best_params.get("trading_fee", 0.001),
+            trading_fee_percent=best_params.get("trading_fee_percent", 0.1),
+            max_risk_per_trade=best_params.get("max_risk_per_trade", 2.0),
         )
 
-        import asyncio
-        result = asyncio.run(runner.run(self.candles_df, self.news_data))
+        result = runner.run_backtest(
+            data=self.candles_df,
+            symbol=self.candles_df.attrs.get("symbol", "BTC/USDT"),
+            timeframe=self.candles_df.attrs.get("timeframe", "1h"),
+            strategy_func=strategy_rsi_macd_ema,
+            strategy_params=best_params,
+        )
 
-        metrics_calc = PerformanceMetrics(result["trades"], result["equity_curve"])
+        # Convert BacktestResult to format expected by PerformanceMetrics
+        trades_list = [
+            {
+                "symbol": trade.symbol,
+                "side": trade.side,
+                "entry_price": trade.entry_price,
+                "exit_price": trade.exit_price,
+                "quantity": trade.quantity,
+                "entry_time": trade.entry_time,
+                "exit_time": trade.exit_time,
+                "pnl": trade.pnl,
+                "pnl_percent": trade.pnl_percent,
+                "fee": trade.fee,
+                "exit_reason": trade.exit_reason,
+                "holding_period": trade.holding_period,
+            }
+            for trade in result.trades
+        ]
+
+        equity_list = [
+            {
+                "timestamp": point["timestamp"],
+                "equity": point["balance"],
+                "price": point["price"],
+            }
+            for point in result.equity_curve
+        ]
+
+        metrics_calc = PerformanceMetrics(trades_list, equity_list)
         best_metrics = metrics_calc.calculate_all()
 
         return best_params, best_metrics, study
