@@ -129,7 +129,24 @@ async def run_backtest(
         strategy_params={},  # Default parameters
     )
 
-    # Convert BacktestResult to format expected by PerformanceMetrics
+    # Calculate metrics dengan API baru
+    logger.info("\n📈 Calculating performance metrics...")
+    metrics_calc = PerformanceMetrics()
+    metrics = metrics_calc.calculate_all(result)
+    
+    # Grade strategi
+    grading = metrics_calc.grade_strategy(metrics)
+    logger.info(f"\n🏆 Strategy Grade: {grading['overall_grade']}")
+    logger.info(f"   Score: {grading['overall_score']}/100")
+    logger.info(f"   Recommendation: {grading['recommendation']}")
+
+    # Print summary
+    metrics_calc.print_summary()
+
+    # Generate report
+    logger.info("\n📊 Generating visual report...")
+    
+    # Convert BacktestResult ke format untuk ReportGenerator
     trades_list = [
         {
             "symbol": trade.symbol,
@@ -147,27 +164,16 @@ async def run_backtest(
         }
         for trade in result.trades
     ]
-
-    # Convert equity curve to format expected by PerformanceMetrics
+    
     equity_list = [
         {
             "timestamp": point["timestamp"],
-            "equity": point["balance"],
+            "balance": point["balance"],
             "price": point["price"],
         }
         for point in result.equity_curve
     ]
-
-    # Calculate metrics
-    logger.info("\n📈 Calculating performance metrics...")
-    metrics_calc = PerformanceMetrics(trades_list, equity_list)
-    metrics = metrics_calc.calculate_all()
-
-    # Print summary
-    metrics_calc.print_summary()
-
-    # Generate report
-    logger.info("\n📊 Generating visual report...")
+    
     report_gen = ReportGenerator(trades_list, equity_list, metrics)
     report_path = report_gen.generate_report()
 

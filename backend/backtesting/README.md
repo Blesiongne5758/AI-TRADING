@@ -96,6 +96,89 @@ class BacktestResult:
     parameters: Dict
 ```
 
+## 📈 Performance Metrics (NEW!)
+
+### API Baru: Menerima BacktestResult Langsung
+```python
+from backtesting.performance_metrics import PerformanceMetrics
+
+# API baru: menerima BacktestResult langsung
+metrics_calc = PerformanceMetrics()
+metrics = metrics_calc.calculate_all(result)  # result adalah BacktestResult
+
+# Grade strategi
+grading = metrics_calc.grade_strategy(metrics)
+print(f"Strategy Grade: {grading['overall_grade']}")
+print(f"Score: {grading['overall_score']}/100")
+print(f"Recommendation: {grading['recommendation']}")
+```
+
+### Metrik yang Dihitung (25+ Metrik!)
+
+**Return Metrics:**
+- `total_return_percent` - Total return persentase
+- `annualized_return_percent` - Return tahunan
+- `net_profit` - Profit bersih dalam USD
+
+**Trade Statistics:**
+- `total_trades` - Jumlah total trade
+- `winning_trades` - Jumlah trade menang
+- `losing_trades` - Jumlah trade kalah
+- `win_rate_percent` - Win rate persentase
+- `avg_win_usd` - Rata-rata profit per trade menang
+- `avg_loss_usd` - Rata-rata loss per trade kalah
+- `largest_win_usd` - Profit terbesar
+- `largest_loss_usd` - Loss terbesar
+- `profit_factor` - Profit factor (gross profit / gross loss)
+- `expectancy_usd` - Expectancy (harapan matematis per trade)
+- `payoff_ratio` - Payoff ratio (avg win / avg loss)
+
+**Risk Metrics:**
+- `max_drawdown_percent` - Max drawdown persentase
+- `max_drawdown_usd` - Max drawdown dalam USD
+- `annualized_volatility_percent` - Volatilitas tahunan
+- `sharpe_ratio` - Sharpe ratio
+- `sortino_ratio` - Sortino ratio
+- `calmar_ratio` - Calmar ratio
+- `kelly_criterion_percent` - Kelly criterion untuk position sizing optimal
+
+**Timing & Breakdown:**
+- `avg_holding_hours` - Rata-rata holding period
+- `backtest_days` - Jumlah hari backtest
+- `long_win_rate_percent` - Win rate untuk long positions
+- `short_win_rate_percent` - Win rate untuk short positions
+- `long_trades` - Jumlah long trades
+- `short_trades` - Jumlah short trades
+- `exit_reasons` - Distribusi exit reasons (STOP_LOSS, TAKE_PROFIT, dll)
+
+### Strategy Grading System
+
+Sistem grading otomatis dari A+ sampai F:
+
+```python
+grading = metrics_calc.grade_strategy(metrics)
+
+# Output:
+{
+    "grades": {
+        "sharpe": ("A+", "Sangat excellent"),
+        "drawdown": ("A", "Drawdown kecil"),
+        "win_rate": ("B", "Win rate cukup"),
+        "profit_factor": ("A", "Profit factor bagus")
+    },
+    "overall_score": 87.5,
+    "overall_grade": "A (STRATEGI BAGUS - layak dipertimbangkan)",
+    "recommendation": "✅ STRATEGI LAYAK untuk live trading..."
+}
+```
+
+**Grade Criteria:**
+- **A+ (90-100)**: Strategi excellent, siap live trading
+- **A (75-89)**: Strategi bagus, layak dipertimbangkan
+- **B (60-74)**: Strategi cukup, perlu optimasi
+- **C (40-59)**: Strategi kurang, perlu revisi besar
+- **D/F (<40)**: Strategi buruk, jangan dipakai live!
+
 ## 🚀 Cara Menggunakan
 
 ### 1. Run Backtest
@@ -391,41 +474,30 @@ async def long_term_backtest():
         },
     )
     
-    # 3. Convert result ke format yang compatible
-    trades_list = [
-        {
-            "symbol": trade.symbol,
-            "side": trade.side,
-            "entry_price": trade.entry_price,
-            "exit_price": trade.exit_price,
-            "quantity": trade.quantity,
-            "entry_time": trade.entry_time,
-            "exit_time": trade.exit_time,
-            "pnl": trade.pnl,
-            "pnl_percent": trade.pnl_percent,
-            "fee": trade.fee,
-            "exit_reason": trade.exit_reason,
-            "holding_period": trade.holding_period,
-        }
-        for trade in result.trades
-    ]
+    # 3. Calculate metrics dengan API baru
+    metrics_calc = PerformanceMetrics()
+    metrics = metrics_calc.calculate_all(result)  # Langsung pakai BacktestResult!
     
-    equity_list = [
-        {
-            "timestamp": point["timestamp"],
-            "equity": point["balance"],
-            "price": point["price"],
-        }
-        for point in result.equity_curve
-    ]
+    # Grade strategi
+    grading = metrics_calc.grade_strategy(metrics)
+    print(f"\n🏆 Strategy Grade: {grading['overall_grade']}")
+    print(f"   Score: {grading['overall_score']}/100")
+    print(f"   Recommendation: {grading['recommendation']}")
     
-    # 4. Calculate metrics
-    metrics_calc = PerformanceMetrics(trades_list, equity_list)
-    metrics = metrics_calc.calculate_all()
-    metrics_calc.print_summary()
+    # Print summary
+    print(f"\n📊 Performance Summary:")
+    print(f"   Total Return: {metrics['total_return_percent']:.2f}%")
+    print(f"   Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
+    print(f"   Max Drawdown: {metrics['max_drawdown_percent']:.2f}%")
+    print(f"   Win Rate: {metrics['win_rate_percent']:.2f}%")
+    print(f"   Profit Factor: {metrics['profit_factor']:.2f}")
     
-    # 5. Generate reports
+    # 4. Generate reports
     from backtesting.report_generator import ReportGenerator
+    
+    # Convert ke format untuk ReportGenerator
+    trades_list = [trade.__dict__ for trade in result.trades]
+    equity_list = result.equity_curve
     
     report_gen = ReportGenerator(trades_list, equity_list, metrics)
     report_gen.generate_report()
@@ -473,12 +545,16 @@ async def multi_timeframe_backtest():
             strategy_params={},
         )
         
-        # Convert result
-        trades_list = [{"pnl": t.pnl, "pnl_percent": t.pnl_percent} for t in result.trades]
-        equity_list = [{"timestamp": p["timestamp"], "equity": p["balance"]} for p in result.equity_curve]
+        # Calculate metrics dengan API baru
+        metrics_calc = PerformanceMetrics()
+        metrics = metrics_calc.calculate_all(result)
         
-        metrics_calc = PerformanceMetrics(trades_list, equity_list)
-        metrics_calc.print_summary()
+        # Grade strategi
+        grading = metrics_calc.grade_strategy(metrics)
+        print(f"\n🏆 Grade: {grading['overall_grade']} (Score: {grading['overall_score']}/100)")
+        print(f"   Return: {metrics['total_return_percent']:.2f}%")
+        print(f"   Sharpe: {metrics['sharpe_ratio']:.2f}")
+        print(f"   Max DD: {metrics['max_drawdown_percent']:.2f}%")
 ```
 
 ## 🎨 Custom Strategy
