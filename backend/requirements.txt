@@ -101,7 +101,29 @@ requests==2.31.0             # HTTP client untuk news APIs
 scikit-learn==1.4.0          # Anomaly detection & ML utilities
 tenacity==8.2.3              # Retry logic untuk API calls
 
+# ============================================
+# Backtesting Engine
+# ============================================
+# Core backtesting (sudah ada di atas):
+# - scipy==1.12.0 (scientific computing)
+# - optuna==3.5.0 (hyperparameter optimization)
+# - scikit-learn==1.4.0 (ML utilities)
+# - matplotlib, seaborn, plotly (visualization)
+
+# Additional dependencies untuk Backtesting:
+# Note: Menggunakan custom backtesting engine (built-in)
+# Tidak perlu library backtesting external karena sudah custom-built
+
+# ============================================
+# Custom Strategies Framework
+# ============================================
+# Dependencies sudah tercakup di atas:
+# - pandas, numpy (data processing)
+# - pandas-ta (technical indicators)
+# - scipy (advanced calculations)
+
 # Note: 
 # - aiohttp, pandas, numpy sudah ada di section sebelumnya
 # - Cache system menggunakan SimpleCache (built-in, no external dependency)
 # - Tidak perlu install aiocache
+# - Backtesting engine adalah custom-built, tidak perlu library external
