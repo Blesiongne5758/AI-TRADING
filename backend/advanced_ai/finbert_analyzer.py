@@ -7,6 +7,7 @@ from typing import List, Dict, Optional
 from loguru import logger
 from transformers import pipeline
 import torch
+from .config import DEFAULT_FINBERT_MODEL, DEVICE, MODEL_CACHE_DIR
 
 
 class FinBERTAnalyzer:
@@ -20,21 +21,23 @@ class FinBERTAnalyzer:
     - GPU acceleration (jika tersedia)
     """
     
-    def __init__(self, model_name: str = "yiyanghkust/finbert-tone"):
+    def __init__(self, model_name: str = None):
         """
         Initialize FinBERT analyzer
         
         Args:
-            model_name: HuggingFace model name
+            model_name: HuggingFace model name (default from config)
                 - "yiyanghkust/finbert-tone" (recommended)
                 - "ProsusAI/finbert" (alternative)
         """
-        self.model_name = model_name
+        self.model_name = model_name or DEFAULT_FINBERT_MODEL
         self.pipeline = None
-        self.device = 0 if torch.cuda.is_available() else -1
+        self.device = 0 if DEVICE == "cuda" and torch.cuda.is_available() else -1
+        self.cache_dir = MODEL_CACHE_DIR
         
-        logger.info(f"🧠 Initializing FinBERT analyzer: {model_name}")
+        logger.info(f"🧠 Initializing FinBERT analyzer: {self.model_name}")
         logger.info(f"   Device: {'GPU' if self.device == 0 else 'CPU'}")
+        logger.info(f"   Cache: {self.cache_dir}")
         
     async def initialize(self):
         """Load model (async untuk avoid blocking)"""
@@ -51,7 +54,8 @@ class FinBERTAnalyzer:
                     tokenizer=self.model_name,
                     device=self.device,
                     truncation=True,
-                    max_length=512
+                    max_length=512,
+                    cache_dir=str(self.cache_dir)
                 )
             )
             

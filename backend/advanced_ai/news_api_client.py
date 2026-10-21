@@ -7,7 +7,11 @@ import asyncio
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from loguru import logger
-from .config import AdvancedAIConfig
+from .config import (
+    CRYPTOPANIC_API_KEY,
+    NEWSAPI_API_KEY,
+    CACHE_TTL
+)
 from .cache_manager import cache
 
 
@@ -61,10 +65,11 @@ class NewsAPIClient:
         now = datetime.now()
         last_request = self.last_request_time[source]
         
+        # Rate limits (requests per minute)
         rate_limits = {
-            "cryptopanic": timedelta(seconds=60 / AdvancedAIConfig.CRYPTOPANIC_RATE_LIMIT),
-            "newsapi": timedelta(seconds=60 / AdvancedAIConfig.NEWSAPI_RATE_LIMIT),
-            "coingecko": timedelta(seconds=2)  # CoinGecko: 30 req/min
+            "cryptopanic": timedelta(seconds=2),  # 30 req/min
+            "newsapi": timedelta(seconds=20),      # 3 req/min (100/day)
+            "coingecko": timedelta(seconds=2)      # 30 req/min
         }
         
         min_interval = rate_limits.get(source, timedelta(seconds=2))
