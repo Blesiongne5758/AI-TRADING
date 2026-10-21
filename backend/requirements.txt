@@ -89,11 +89,17 @@ python-multipart==0.0.6
 # ============================================
 # Modul G: Advanced AI (FinBERT)
 # ============================================
-# Dependencies sudah termasuk di atas:
+# Core AI/ML (sudah ada di atas):
 # - transformers==4.36.2 (FinBERT model)
 # - torch==2.1.2 (PyTorch backend)
-#
+# - scipy==1.12.0 (scientific computing)
+
 # Additional dependencies untuk Advanced AI:
-# - aiohttp (sudah ada) - untuk API calls
-# - pandas (sudah ada) - untuk data processing
-# - numpy (sudah ada) - untuk calculations
+sentencepiece==0.1.99        # Tokenizer untuk FinBERT
+tweepy==4.14.0               # Twitter/X API client
+requests==2.31.0             # HTTP client untuk news APIs
+scikit-learn==1.4.0          # Anomaly detection & ML utilities
+aiocache==0.12.2             # Async caching library
+tenacity==8.2.3              # Retry logic untuk API calls
+
+# Note: aiohttp, pandas, numpy sudah ada di section sebelumnya
