@@ -1,374 +1,309 @@
 """
 News API Client
-Multi-source news aggregator dengan caching dan rate limiting
+Mengumpulkan berita dari multiple sumber profesional
 """
-import aiohttp
 import asyncio
-from typing import List, Dict, Optional
+import aiohttp
 from datetime import datetime, timedelta
+from typing import List, Dict, Optional
 from loguru import logger
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from .config import (
     CRYPTOPANIC_API_KEY,
     NEWSAPI_API_KEY,
-    CACHE_TTL
+    GNEWS_API_KEY,
 )
 from .cache_manager import cache
 
 
 class NewsAPIClient:
-    """
-    Multi-source news aggregator
-    
-    Features:
-    - CryptoPanic API (crypto-specific)
-    - NewsAPI (general news)
-    - CoinGecko News (crypto news)
-    - Caching untuk hemat API calls
-    - Rate limiting
-    - Deduplication
-    """
-    
+    """Multi-source news aggregator"""
+
     def __init__(self):
-        """Initialize news API client"""
         self.session = None
-        
-        # Rate limiting
-        self.last_request_time = {
-            "cryptopanic": datetime.min,
-            "newsapi": datetime.min,
-            "coingecko": datetime.min
+        self.sources_enabled = self._check_sources()
+
+    def _check_sources(self) -> Dict[str, bool]:
+        """Cek API key mana yang tersedia"""
+        return {
+            "cryptopanic": bool(CRYPTOPANIC_API_KEY),
+            "newsapi": bool(NEWSAPI_API_KEY),
+            "gnews": bool(GNEWS_API_KEY),
         }
-        
-        logger.info("📰 News API Client initialized")
-    
-    async def initialize(self):
-        """Initialize aiohttp session"""
-        self.session = aiohttp.ClientSession()
-        logger.info("✅ News API session initialized")
-    
+
+    async def _ensure_session(self):
+        """Buat HTTP session jika belum ada"""
+        if self.session is None or self.session.closed:
+            timeout = aiohttp.ClientTimeout(total=30)
+            self.session = aiohttp.ClientSession(timeout=timeout)
+
     async def close(self):
-        """Close session"""
-        if self.session:
+        """Tutup session"""
+        if self.session and not self.session.closed:
             await self.session.close()
-            logger.info("🔒 News API session closed")
-    
-    async def _check_rate_limit(self, source: str) -> bool:
-        """
-        Check if we can make request (rate limiting)
-        
-        Args:
-            source: API source name
-            
-        Returns:
-            True if can make request, False if rate limited
-        """
-        now = datetime.now()
-        last_request = self.last_request_time[source]
-        
-        # Rate limits (requests per minute)
-        rate_limits = {
-            "cryptopanic": timedelta(seconds=2),  # 30 req/min
-            "newsapi": timedelta(seconds=20),      # 3 req/min (100/day)
-            "coingecko": timedelta(seconds=2)      # 30 req/min
-        }
-        
-        min_interval = rate_limits.get(source, timedelta(seconds=2))
-        
-        if now - last_request < min_interval:
-            wait_time = (min_interval - (now - last_request)).total_seconds()
-            logger.debug(f"Rate limited for {source}, waiting {wait_time:.1f}s")
-            await asyncio.sleep(wait_time)
-        
-        self.last_request_time[source] = datetime.now()
-        return True
-    
+
+    # ============================================
+    # CRYPTOPANIC (KHUSUS CRYPTO - GRATIS)
+    # ============================================
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def fetch_cryptopanic(
         self,
-        currencies: List[str] = ["BTC", "ETH"],
+        currencies: List[str] = None,
         limit: int = 50,
-        filter_type: str = "hot"
+        filter_type: str = "hot",  # hot, rising, important, bullish, bearish
     ) -> List[Dict]:
         """
-        Fetch news from CryptoPanic API
+        Ambil berita dari CryptoPanic (sumber terbaik untuk crypto)
         
         Args:
-            currencies: List of currency codes
-            limit: Max articles
-            filter_type: Filter type (hot, rising, important)
-            
-        Returns:
-            List of news articles
+            currencies: Filter by currency (misal: ["BTC", "ETH"])
+            limit: Jumlah berita
+            filter_type: hot, rising, important, bullish, bearish, saved
         """
-        if not AdvancedAIConfig.CRYPTOPANIC_API_KEY:
-            logger.warning("⚠️  CryptoPanic API key not configured")
+        if not self.sources_enabled["cryptopanic"]:
             return []
-        
-        # Check cache first
-        cache_key = {
-            "source": "cryptopanic",
-            "currencies": currencies,
-            "limit": limit,
-            "filter": filter_type
-        }
-        
+
+        await self._ensure_session()
+
+        # Cek cache
+        cache_key = f"cryptopanic:{','.join(currencies or ['all'])}:{filter_type}:{limit}"
         cached = await cache.get("news", cache_key)
         if cached:
-            logger.info(f"✅ CryptoPanic cache hit: {len(cached)} articles")
             return cached
-        
-        # Rate limiting
-        await self._check_rate_limit("cryptopanic")
-        
+
+        url = "https://cryptopanic.com/api/v1/posts/"
+        params = {
+            "auth_token": CRYPTOPANIC_API_KEY,
+            "kind": "news",
+            "filter": filter_type,
+            "page": 1,
+        }
+
+        if currencies:
+            params["currencies"] = ",".join(currencies)
+
         try:
-            url = "https://cryptopanic.com/api/v1/posts/"
-            
-            params = {
-                "auth_token": AdvancedAIConfig.CRYPTOPANIC_API_KEY,
-                "currencies": ",".join(currencies),
-                "filter": filter_type,
-                "kind": "news",
-                "page": 1
-            }
-            
             async with self.session.get(url, params=params) as response:
                 if response.status != 200:
-                    logger.error(f"❌ CryptoPanic API error: {response.status}")
+                    logger.warning(f"CryptoPanic error: {response.status}")
                     return []
-                
+
                 data = await response.json()
                 articles = []
-                
+
                 for item in data.get("results", [])[:limit]:
+                    # Extract currencies mentioned
+                    mentioned_currencies = [
+                        c["code"] for c in item.get("currencies", [])
+                    ]
+
+                    # Extract votes (community sentiment)
+                    votes = item.get("votes", {})
+                    community_score = (
+                        votes.get("positive", 0) - votes.get("negative", 0)
+                    )
+
                     articles.append({
+                        "source": "cryptopanic",
                         "title": item.get("title", ""),
+                        "url": item.get("url", ""),
+                        "published_at": item.get("published_at"),
                         "summary": item.get("body", "")[:500],
-                        "source": item.get("source", {}).get("title", "CryptoPanic"),
-                        "link": item.get("url", ""),
-                        "published_date": item.get("published_at", ""),
-                        "category": "crypto",
-                        "votes": {
-                            "positive": item.get("votes", {}).get("positive", 0),
-                            "negative": item.get("votes", {}).get("negative", 0)
-                        },
-                        "api_source": "cryptopanic"
+                        "currencies": mentioned_currencies,
+                        "community_votes": votes,
+                        "community_score": community_score,
+                        "importance": "high" if item.get("important") else "normal",
+                        "kind": item.get("kind", "news"),
                     })
-                
-                # Cache results
-                await cache.set("news", articles, AdvancedAIConfig.CACHE_TTL_NEWS, cache_key)
-                
-                logger.info(f"✅ Fetched {len(articles)} articles from CryptoPanic")
+
+                # Cache 5 menit
+                await cache.set("news", articles, 300, cache_key)
+                logger.info(f"📰 CryptoPanic: {len(articles)} articles fetched")
                 return articles
-                
+
         except Exception as e:
-            logger.error(f"❌ Error fetching CryptoPanic news: {e}")
+            logger.error(f"CryptoPanic fetch error: {e}")
             return []
-    
+
+    # ============================================
+    # NEWSAPI.ORG (UMUM - FREEMIUM)
+    # ============================================
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def fetch_newsapi(
         self,
         query: str = "cryptocurrency OR bitcoin OR ethereum",
-        limit: int = 50,
-        days_back: int = 1
+        limit: int = 30,
+        days_back: int = 1,
     ) -> List[Dict]:
-        """
-        Fetch news from NewsAPI
-        
-        Args:
-            query: Search query
-            limit: Max articles
-            days_back: How many days back
-            
-        Returns:
-            List of news articles
-        """
-        if not AdvancedAIConfig.NEWSAPI_API_KEY:
-            logger.warning("⚠️  NewsAPI key not configured")
+        """Ambil berita dari NewsAPI.org"""
+        if not self.sources_enabled["newsapi"]:
             return []
-        
-        # Check cache
-        cache_key = {
-            "source": "newsapi",
-            "query": query,
-            "limit": limit,
-            "days": days_back
-        }
-        
+
+        await self._ensure_session()
+
+        cache_key = f"newsapi:{query}:{limit}:{days_back}"
         cached = await cache.get("news", cache_key)
         if cached:
-            logger.info(f"✅ NewsAPI cache hit: {len(cached)} articles")
             return cached
-        
-        # Rate limiting
-        await self._check_rate_limit("newsapi")
-        
+
+        url = "https://newsapi.org/v2/everything"
+        from_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+        params = {
+            "q": query,
+            "from": from_date,
+            "sortBy": "relevancy",
+            "pageSize": limit,
+            "language": "en",
+            "apiKey": NEWSAPI_API_KEY,
+        }
+
         try:
-            url = "https://newsapi.org/v2/everything"
-            
-            from_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-            
-            params = {
-                "q": query,
-                "from": from_date,
-                "sortBy": "relevancy",
-                "pageSize": min(limit, 100),  # API limit
-                "apiKey": AdvancedAIConfig.NEWSAPI_API_KEY,
-                "language": "en"
-            }
-            
             async with self.session.get(url, params=params) as response:
                 if response.status != 200:
-                    logger.error(f"❌ NewsAPI error: {response.status}")
+                    logger.warning(f"NewsAPI error: {response.status}")
                     return []
-                
+
                 data = await response.json()
                 articles = []
-                
+
                 for item in data.get("articles", []):
                     articles.append({
+                        "source": f"newsapi/{item.get('source', {}).get('name', 'unknown')}",
                         "title": item.get("title", ""),
-                        "summary": item.get("description", "") or "",
-                        "source": item.get("source", {}).get("name", "NewsAPI"),
-                        "link": item.get("url", ""),
-                        "published_date": item.get("publishedAt", ""),
-                        "category": "crypto",
-                        "api_source": "newsapi"
+                        "url": item.get("url", ""),
+                        "published_at": item.get("publishedAt"),
+                        "summary": (item.get("description") or "")[:500],
+                        "content": (item.get("content") or "")[:1000],
+                        "author": item.get("author"),
                     })
-                
-                # Cache results
-                await cache.set("news", articles, AdvancedAIConfig.CACHE_TTL_NEWS, cache_key)
-                
-                logger.info(f"✅ Fetched {len(articles)} articles from NewsAPI")
+
+                await cache.set("news", articles, 300, cache_key)
+                logger.info(f"📰 NewsAPI: {len(articles)} articles fetched")
                 return articles
-                
+
         except Exception as e:
-            logger.error(f"❌ Error fetching NewsAPI news: {e}")
+            logger.error(f"NewsAPI fetch error: {e}")
             return []
-    
-    async def fetch_coingecko_news(
+
+    # ============================================
+    # GNEWS (GRATIS ALTERNATIF)
+    # ============================================
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def fetch_gnews(
         self,
-        coin_id: str = "bitcoin",
-        limit: int = 30
+        query: str = "cryptocurrency",
+        limit: int = 30,
     ) -> List[Dict]:
-        """
-        Fetch news from CoinGecko (free, no API key needed)
-        
-        Args:
-            coin_id: CoinGecko coin ID
-            limit: Max articles
-            
-        Returns:
-            List of news articles
-        """
-        # Check cache
-        cache_key = {
-            "source": "coingecko",
-            "coin_id": coin_id,
-            "limit": limit
-        }
-        
+        """Ambil berita dari GNews"""
+        if not self.sources_enabled["gnews"]:
+            return []
+
+        await self._ensure_session()
+
+        cache_key = f"gnews:{query}:{limit}"
         cached = await cache.get("news", cache_key)
         if cached:
-            logger.info(f"✅ CoinGecko cache hit: {len(cached)} articles")
             return cached
-        
-        # Rate limiting
-        await self._check_rate_limit("coingecko")
-        
+
+        url = "https://gnews.io/api/v4/search"
+        params = {
+            "q": query,
+            "lang": "en",
+            "max": limit,
+            "apikey": GNEWS_API_KEY,
+        }
+
         try:
-            url = f"https://api.coingecko.com/api/v3/news"
-            
-            params = {
-                "per_page": limit
-            }
-            
             async with self.session.get(url, params=params) as response:
                 if response.status != 200:
-                    logger.error(f"❌ CoinGecko API error: {response.status}")
+                    logger.warning(f"GNews error: {response.status}")
                     return []
-                
+
                 data = await response.json()
                 articles = []
-                
-                for item in data.get("data", [])[:limit]:
-                    # Filter by coin if needed
-                    title = item.get("title", "").lower()
-                    if coin_id.lower() in title or coin_id.upper() in title:
-                        articles.append({
-                            "title": item.get("title", ""),
-                            "summary": item.get("description", "")[:500],
-                            "source": item.get("author", "CoinGecko"),
-                            "link": item.get("url", ""),
-                            "published_date": item.get("updated_at", ""),
-                            "category": "crypto",
-                            "api_source": "coingecko"
-                        })
-                
-                # Cache results
-                await cache.set("news", articles, AdvancedAIConfig.CACHE_TTL_NEWS, cache_key)
-                
-                logger.info(f"✅ Fetched {len(articles)} articles from CoinGecko")
+
+                for item in data.get("articles", []):
+                    articles.append({
+                        "source": f"gnews/{item.get('source', {}).get('name', 'unknown')}",
+                        "title": item.get("title", ""),
+                        "url": item.get("url", ""),
+                        "published_at": item.get("publishedAt"),
+                        "summary": (item.get("description") or "")[:500],
+                        "content": (item.get("content") or "")[:1000],
+                    })
+
+                await cache.set("news", articles, 300, cache_key)
+                logger.info(f"📰 GNews: {len(articles)} articles fetched")
                 return articles
-                
+
         except Exception as e:
-            logger.error(f"❌ Error fetching CoinGecko news: {e}")
+            logger.error(f"GNews fetch error: {e}")
             return []
-    
-    async def fetch_all(
+
+    # ============================================
+    # AGGREGATOR
+    # ============================================
+    async def fetch_all_news(
         self,
-        currencies: List[str] = ["BTC", "ETH"],
-        limit_per_source: int = 30
+        currencies: List[str] = None,
+        limit_per_source: int = 30,
     ) -> List[Dict]:
         """
-        Fetch news from all sources
-        
-        Args:
-            currencies: List of currency codes
-            limit_per_source: Max articles per source
-            
-        Returns:
-            Combined list of news articles (deduplicated)
+        Ambil berita dari SEMUA sumber yang tersedia secara paralel
         """
-        logger.info(f"📰 Fetching news from all sources for {currencies}...")
-        
-        # Fetch from all sources concurrently
-        tasks = [
-            self.fetch_cryptopanic(currencies, limit_per_source),
-            self.fetch_newsapi(" OR ".join(currencies), limit_per_source),
-        ]
-        
-        # Add CoinGecko for major coins
-        if "BTC" in currencies:
-            tasks.append(self.fetch_coingecko_news("bitcoin", limit_per_source))
-        if "ETH" in currencies:
-            tasks.append(self.fetch_coingecko_news("ethereum", limit_per_source))
-        
+        logger.info("📰 Fetching news from all sources...")
+
+        tasks = []
+
+        # CryptoPanic (paling penting untuk crypto)
+        if self.sources_enabled["cryptopanic"]:
+            tasks.append(self.fetch_cryptopanic(currencies=currencies, limit=limit_per_source))
+
+        # NewsAPI
+        if self.sources_enabled["newsapi"]:
+            query = " OR ".join(currencies) if currencies else "cryptocurrency OR bitcoin"
+            tasks.append(self.fetch_newsapi(query=query, limit=limit_per_source))
+
+        # GNews
+        if self.sources_enabled["gnews"]:
+            query = " OR ".join(currencies) if currencies else "cryptocurrency"
+            tasks.append(self.fetch_gnews(query=query, limit=limit_per_source))
+
+        if not tasks:
+            logger.warning("⚠️  No news sources enabled! Check API keys in .env")
+            return []
+
+        # Jalankan paralel
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Combine all articles
+
+        # Gabungkan semua
         all_articles = []
         for result in results:
             if isinstance(result, list):
                 all_articles.extend(result)
             elif isinstance(result, Exception):
-                logger.error(f"Error in news fetch: {result}")
-        
-        # Deduplicate by title
+                logger.error(f"News source error: {result}")
+
+        # Sort by published date (terbaru dulu)
+        all_articles.sort(
+            key=lambda x: x.get("published_at") or "",
+            reverse=True,
+        )
+
+        # Hapus duplikat berdasarkan title
         seen_titles = set()
         unique_articles = []
-        
         for article in all_articles:
-            title = article.get("title", "")
-            if title and title not in seen_titles:
-                seen_titles.add(title)
+            title_key = article["title"].lower().strip()[:50]
+            if title_key not in seen_titles:
+                seen_titles.add(title_key)
                 unique_articles.append(article)
-        
-        logger.info(f"✅ Total unique articles: {len(unique_articles)} (from {len(all_articles)} total)")
-        
+
+        logger.info(f"✅ Total unique articles: {len(unique_articles)}")
         return unique_articles
-    
-    def get_cache_stats(self) -> Dict:
-        """Get cache statistics"""
-        return cache.get_stats()
 
-
-# Global instance
-news_client = NewsAPIClient()
+    def get_enabled_sources(self) -> Dict[str, bool]:
+        """Info sumber yang aktif"""
+        return self.sources_enabled
