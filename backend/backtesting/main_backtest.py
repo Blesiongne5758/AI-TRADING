@@ -3,6 +3,7 @@ Main Backtest - Entry point for backtesting
 """
 import asyncio
 import sys
+import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
 from loguru import logger
@@ -16,7 +17,7 @@ from .backtest_data_loader import BacktestDataLoader
 from .strategy_runner import StrategyRunner, BacktestResult, strategy_rsi_macd_ema
 from .performance_metrics import PerformanceMetrics
 from .report_generator import ReportGenerator
-from .optimizer import StrategyOptimizer
+from .optimizer import ParameterOptimizer
 
 
 # Setup logging
@@ -228,27 +229,43 @@ async def run_optimization(
         "rsi_overbought": [65, 70, 75],
     }
 
-    # Run optimization
+    # Run optimization dengan ParameterOptimizer yang baru
     logger.info("\n🔍 Running grid search optimization...")
     logger.info("   Strategy: RSI + MACD + EMA")
     logger.info(f"   Parameter grid: {param_grid}")
     
-    # Set symbol and timeframe as attributes for optimizer
-    candles_df.attrs["symbol"] = symbol
-    candles_df.attrs["timeframe"] = timeframe
-    
-    optimizer = StrategyOptimizer(candles_df, news_data)
-
-    best_params, best_metrics, all_results = optimizer.optimize(
-        param_grid=param_grid,
-        metric_to_optimize="sharpe_ratio",
+    # Create StrategyRunner
+    runner = StrategyRunner(
         initial_balance=initial_balance,
+        trading_fee_percent=0.1,
+        max_risk_per_trade=2.0,
     )
+    
+    # Create ParameterOptimizer
+    optimizer = ParameterOptimizer(runner)
+    
+    # Run grid search
+    results = optimizer.grid_search(
+        data=candles_df,
+        symbol=symbol,
+        timeframe=timeframe,
+        strategy_func=strategy_rsi_macd_ema,
+        param_grid=param_grid,
+        optimize_for="sharpe_ratio",
+    )
+
+    if not results:
+        logger.error("❌ No valid results from optimization")
+        return
 
     # Print results
     logger.info("\n" + "=" * 70)
     logger.info("🏆 OPTIMIZATION RESULTS")
     logger.info("=" * 70)
+
+    best_result = results[0]
+    best_params = best_result["parameters"]
+    best_metrics = best_result["metrics"]
 
     logger.info("\nBest Parameters:")
     for param, value in best_params.items():
@@ -256,18 +273,20 @@ async def run_optimization(
 
     logger.info("\nBest Performance:")
     logger.info(f"  Sharpe Ratio:    {best_metrics['sharpe_ratio']:.2f}")
-    logger.info(f"  Total Return:    {best_metrics['total_return']:+.2f}%")
-    logger.info(f"  Max Drawdown:    {best_metrics['max_drawdown']:.2f}%")
-    logger.info(f"  Win Rate:        {best_metrics['win_rate']:.2f}%")
-
-    # Generate optimization report
-    logger.info("\n📊 Generating optimization report...")
-    optimizer.plot_optimization_results(all_results)
+    logger.info(f"  Total Return:    {best_metrics['total_return_percent']:+.2f}%")
+    logger.info(f"  Max Drawdown:    {best_metrics['max_drawdown_percent']:.2f}%")
+    logger.info(f"  Win Rate:        {best_metrics['win_rate_percent']:.2f}%")
+    logger.info(f"  Profit Factor:   {best_metrics['profit_factor']:.2f}")
 
     # Save results to CSV
-    results_df = optimizer.generate_optimization_report(all_results)
+    logger.info("\n📊 Saving optimization results...")
+    results_df = pd.DataFrame([
+        {**r["parameters"], **{k: v for k, v in r["metrics"].items() if not isinstance(v, (list, dict))}}
+        for r in results
+    ])
     results_df.to_csv("backtest_reports/optimization_results.csv", index=False)
-    logger.info("✅ Optimization results saved to: backtest_reports/optimization_results.csv")
+    logger.info(f"✅ Optimization results saved to: backtest_reports/optimization_results.csv")
+    logger.info(f"   Total combinations tested: {len(results)}")
 
 
 async def main():

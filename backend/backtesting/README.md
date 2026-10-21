@@ -647,56 +647,217 @@ result = runner.run_backtest(
 )
 ```
 
-## 🎛️ Parameter Optimization
+## 🎛️ Parameter Optimization (NEW!)
 
-### Define Parameter Grid
+### Method 1: Grid Search (Exhaustive)
+
+Grid search mencoba **semua kombinasi** parameter yang didefinisikan.
 
 ```python
-from backtesting.optimizer import StrategyOptimizer
+from backtesting import StrategyRunner, ParameterOptimizer, strategy_rsi_macd_ema
 
-# Optimize strategy parameters (bukan risk management)
+# 1. Create StrategyRunner
+runner = StrategyRunner(
+    initial_balance=10000.0,
+    trading_fee_percent=0.1,
+    max_risk_per_trade=2.0,
+)
+
+# 2. Create ParameterOptimizer
+optimizer = ParameterOptimizer(runner)
+
+# 3. Define parameter grid
 param_grid = {
     'rsi_period': [10, 14, 20],
     'rsi_oversold': [25, 30, 35],
     'rsi_overbought': [65, 70, 75],
 }
 
-# Set attributes untuk optimizer
-candles_df.attrs["symbol"] = "BTC/USDT"
-candles_df.attrs["timeframe"] = "1h"
-
-optimizer = StrategyOptimizer(candles_df, news_data=[])
-best_params, best_metrics, all_results = optimizer.optimize(
+# 4. Run grid search
+results = optimizer.grid_search(
+    data=candles_df,
+    symbol="BTC/USDT",
+    timeframe="1h",
+    strategy_func=strategy_rsi_macd_ema,
     param_grid=param_grid,
-    metric_to_optimize='sharpe_ratio',
-    initial_balance=10000.0,
+    optimize_for="sharpe_ratio",  # atau "profit_factor", "total_return_percent", dll
 )
 
-print(f"Best parameters: {best_params}")
-print(f"Best Sharpe Ratio: {best_metrics['sharpe_ratio']:.2f}")
+# 5. Access best result
+best_result = results[0]
+print(f"Best parameters: {best_result['parameters']}")
+print(f"Best Sharpe Ratio: {best_result['optimize_value']:.2f}")
+print(f"Total Return: {best_result['metrics']['total_return_percent']:.2f}%")
 ```
+
+**When to use Grid Search:**
+- ✅ Parameter space kecil (< 100 combinations)
+- ✅ Ingin memastikan menemukan global optimum
+- ✅ Waktu bukan masalah
+
+### Method 2: Optuna (Bayesian Optimization)
+
+Optuna menggunakan **Bayesian optimization** untuk mencari parameter optimal lebih efisien.
+
+```python
+from backtesting import StrategyRunner, ParameterOptimizer, strategy_rsi_macd_ema
+
+# 1. Create StrategyRunner
+runner = StrategyRunner(initial_balance=10000.0)
+
+# 2. Create ParameterOptimizer
+optimizer = ParameterOptimizer(runner)
+
+# 3. Define parameter space (ranges)
+param_space = {
+    'rsi_period': (10, 30),        # Integer range
+    'rsi_oversold': (20, 40),      # Integer range
+    'rsi_overbought': (60, 80),    # Integer range
+}
+
+# 4. Run Optuna optimization
+result = optimizer.optuna_optimize(
+    data=candles_df,
+    symbol="BTC/USDT",
+    timeframe="1h",
+    strategy_func=strategy_rsi_macd_ema,
+    param_space=param_space,
+    optimize_for="sharpe_ratio",
+    n_trials=50,  # Number of trials
+)
+
+# 5. Access best result
+print(f"Best parameters: {result['best_params']}")
+print(f"Best Sharpe Ratio: {result['best_value']:.2f}")
+print(f"Total trials: {len(result['all_trials'])}")
+```
+
+**When to use Optuna:**
+- ✅ Parameter space besar (> 100 combinations)
+- ✅ Waktu terbatas
+- ✅ Continuous parameters (float ranges)
+- ✅ Lebih efisien dari grid search
 
 ### Optimization Output
 
 ```
-🔍 Running grid search optimization...
-Testing combination 1/9: {'max_risk_per_trade': 0.01, 'trading_fee': 0.0005}
-Testing combination 2/9: {'max_risk_per_trade': 0.01, 'trading_fee': 0.001}
-...
+🔬 Grid search: 27 combinations
+   Optimizing for: sharpe_ratio
+   Progress: 10/27
+   Progress: 20/27
+✅ Grid search complete: 27 valid results
+   Best sharpe_ratio: 2.45
+   Best params: {'rsi_period': 14, 'rsi_oversold': 30, 'rsi_overbought': 70}
 
 ======================================================================
 🏆 OPTIMIZATION RESULTS
 ======================================================================
 
 Best Parameters:
-  max_risk_per_trade: 0.02
-  trading_fee: 0.001
+  rsi_period: 14
+  rsi_oversold: 30
+  rsi_overbought: 70
 
 Best Performance:
   Sharpe Ratio:    2.45
   Total Return:    +25.34%
   Max Drawdown:    -8.45%
   Win Rate:        68.09%
+  Profit Factor:   2.35
+
+📊 Saving optimization results...
+✅ Optimization results saved to: backtest_reports/optimization_results.csv
+   Total combinations tested: 27
+```
+
+### Optimization Metrics
+
+Anda bisa optimize untuk metrik apapun:
+
+```python
+# Sharpe Ratio (risk-adjusted return)
+optimizer.grid_search(..., optimize_for="sharpe_ratio")
+
+# Profit Factor (gross profit / gross loss)
+optimizer.grid_search(..., optimize_for="profit_factor")
+
+# Total Return (percentage)
+optimizer.grid_search(..., optimize_for="total_return_percent")
+
+# Win Rate (percentage)
+optimizer.grid_search(..., optimize_for="win_rate_percent")
+
+# Max Drawdown (lower is better, tapi optimizer maximize)
+# Note: Untuk minimize, gunakan negative value atau custom logic
+optimizer.grid_search(..., optimize_for="calmar_ratio")  # Alternative
+```
+
+### CLI Usage
+
+```bash
+# Run optimization via CLI
+python -m backtesting.main_backtest \
+  --mode optimize \
+  --symbol BTC/USDT \
+  --timeframe 1h \
+  --balance 10000 \
+  --use-api \
+  --start-date 2022-01-01
+```
+
+### Best Practices
+
+**1. Start with Grid Search untuk small parameter space:**
+```python
+# 3 parameters × 3 values each = 27 combinations (fast)
+param_grid = {
+    'rsi_period': [10, 14, 20],
+    'rsi_oversold': [25, 30, 35],
+    'rsi_overbought': [65, 70, 75],
+}
+```
+
+**2. Use Optuna untuk large parameter space:**
+```python
+# 5 parameters × continuous ranges = infinite combinations
+param_space = {
+    'rsi_period': (10, 30),
+    'rsi_oversold': (20, 40),
+    'rsi_overbought': (60, 80),
+    'macd_fast': (8, 16),
+    'macd_slow': (20, 30),
+}
+```
+
+**3. Filter results dengan minimum trades:**
+```python
+# Optimizer automatically skip results with < 10 trades
+# Ini memastikan statistical significance
+```
+
+**4. Validate dengan out-of-sample data:**
+```python
+# Split data: 70% for optimization, 30% for validation
+train_data = candles_df.iloc[:int(len(candles_df) * 0.7)]
+test_data = candles_df.iloc[int(len(candles_df) * 0.7):]
+
+# Optimize on train_data
+results = optimizer.grid_search(data=train_data, ...)
+
+# Validate best params on test_data
+best_params = results[0]['parameters']
+validation_result = runner.run_backtest(
+    data=test_data,
+    strategy_func=strategy_rsi_macd_ema,
+    strategy_params=best_params,
+)
+```
+
+**5. Avoid overfitting:**
+- ✅ Use walk-forward validation
+- ✅ Test on multiple time periods
+- ✅ Check if results are stable across different parameter values
+- ❌ Don't optimize terlalu banyak parameters sekaligus
 
 ✅ Optimization results saved to: backtest_reports/optimization_results.csv
 ```

@@ -1,388 +1,158 @@
 """
-Strategy Optimizer - Grid search and Bayesian optimization for optimal parameters
+Parameter Optimizer
+Mencari parameter terbaik menggunakan grid search atau Optuna
 """
+import itertools
+from typing import Dict, List, Callable, Tuple
 import pandas as pd
-from typing import List, Dict, Tuple, Optional
-from itertools import product
 from loguru import logger
-import optuna
-from .strategy_runner import StrategyRunner, strategy_rsi_macd_ema
+from .strategy_runner import StrategyRunner, BacktestResult
 from .performance_metrics import PerformanceMetrics
 
 
-class StrategyOptimizer:
-    """Optimize strategy parameters using grid search"""
+class ParameterOptimizer:
+    """Optimizer parameter strategi"""
 
-    def __init__(self, candles_df: pd.DataFrame, news_data: List[Dict] = None):
-        """
-        Initialize optimizer
+    def __init__(self, strategy_runner: StrategyRunner):
+        self.runner = strategy_runner
+        self.metrics_calc = PerformanceMetrics()
 
-        Args:
-            candles_df: Historical candle data
-            news_data: Historical news data (optional)
-        """
-        self.candles_df = candles_df
-        self.news_data = news_data or []
-
-    def optimize(
+    def grid_search(
         self,
+         pd.DataFrame,
+        symbol: str,
+        timeframe: str,
+        strategy_func: Callable,
         param_grid: Dict[str, List],
-        metric_to_optimize: str = "sharpe_ratio",
-        initial_balance: float = 10000.0,
-    ) -> Tuple[Dict, Dict, List[Dict]]:
+        optimize_for: str = "sharpe_ratio",
+    ) -> List[Dict]:
         """
-        Run grid search optimization
-
+        Grid search untuk mencari parameter terbaik
+        
         Args:
-            param_grid: Dictionary of parameter names and values to test
-            metric_to_optimize: Metric to maximize (e.g., "sharpe_ratio", "total_return")
-            initial_balance: Starting balance for each backtest
-
+             Dict dengan list nilai untuk setiap parameter
+                        Contoh: {"rsi_period": [10, 14, 20], "rsi_oversold": [25, 30, 35]}
+            optimize_for: Metrik yang dioptimasi (sharpe_ratio, profit_factor, total_return, dll)
+            
         Returns:
-            Tuple of (best_params, best_metrics, all_results)
+            List hasil sorted by optimize_for (descending)
         """
-        logger.info(f"Starting optimization with {self._count_combinations(param_grid)} combinations")
+        # Generate semua kombinasi parameter
+        keys = list(param_grid.keys())
+        values = list(param_grid.values())
+        combinations = list(itertools.product(*values))
 
-        # Generate all parameter combinations
-        param_names = list(param_grid.keys())
-        param_values = list(param_grid.values())
-        combinations = list(product(*param_values))
+        logger.info(f"🔬 Grid search: {len(combinations)} combinations")
+        logger.info(f"   Optimizing for: {optimize_for}")
 
-        all_results = []
-        best_score = float("-inf")
-        best_params = None
-        best_metrics = None
+        results = []
 
-        # Test each combination
         for i, combo in enumerate(combinations):
-            params = dict(zip(param_names, combo))
-
-            logger.info(f"Testing combination {i+1}/{len(combinations)}: {params}")
+            params = dict(zip(keys, combo))
 
             try:
-                # Run backtest with these parameters
-                runner = StrategyRunner(
-                    initial_balance=initial_balance,
-                    trading_fee_percent=params.get("trading_fee_percent", 0.1),
-                    max_risk_per_trade=params.get("max_risk_per_trade", 2.0),
-                )
-
-                # Run backtest with strategy function
-                result = runner.run_backtest(
-                    data=self.candles_df,
-                    symbol=self.candles_df.attrs.get("symbol", "BTC/USDT"),
-                    timeframe=self.candles_df.attrs.get("timeframe", "1h"),
-                    strategy_func=strategy_rsi_macd_ema,
+                # Run backtest
+                result = self.runner.run_backtest(
+                    data=data,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    strategy_func=strategy_func,
                     strategy_params=params,
                 )
-
-                # Calculate metrics dengan API baru
-                metrics_calc = PerformanceMetrics()
-                metrics = metrics_calc.calculate_all(result)
-
-                # Store result
-                result_entry = {
-                    "params": params,
-                    "metrics": metrics,
-                }
-                all_results.append(result_entry)
-
-                # Check if this is the best
-                score = metrics.get(metric_to_optimize, 0)
-                if score > best_score:
-                    best_score = score
-                    best_params = params
-                    best_metrics = metrics
-
-            except Exception as e:
-                logger.error(f"Error testing combination {params}: {e}")
-                continue
-
-        logger.info(f"Optimization complete. Best {metric_to_optimize}: {best_score:.2f}")
-
-        return best_params, best_metrics, all_results
-
-    def _count_combinations(self, param_grid: Dict[str, List]) -> int:
-        """Count total number of parameter combinations"""
-        count = 1
-        for values in param_grid.values():
-            count *= len(values)
-        return count
-
-    def generate_optimization_report(self, all_results: List[Dict]) -> pd.DataFrame:
-        """
-        Generate optimization report as DataFrame
-
-        Args:
-            all_results: List of all optimization results
-
-        Returns:
-            DataFrame with parameters and metrics
-        """
-        if not all_results:
-            return pd.DataFrame()
-
-        # Flatten results
-        rows = []
-        for result in all_results:
-            row = {**result["params"], **result["metrics"]}
-            rows.append(row)
-
-        df = pd.DataFrame(rows)
-
-        # Sort by Sharpe ratio
-        if "sharpe_ratio" in df.columns:
-            df = df.sort_values("sharpe_ratio", ascending=False)
-
-        return df
-
-    def plot_optimization_results(self, all_results: List[Dict], output_path: str = "optimization_results.png"):
-        """
-        Plot optimization results
-
-        Args:
-            all_results: List of all optimization results
-            output_path: Path to save plot
-        """
-        try:
-            import matplotlib.pyplot as plt
-
-            df = self.generate_optimization_report(all_results)
-
-            if df.empty:
-                logger.warning("No results to plot")
-                return
-
-            # Plot top 10 results
-            top_10 = df.head(10)
-
-            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-            # Sharpe Ratio
-            ax = axes[0, 0]
-            ax.bar(range(len(top_10)), top_10["sharpe_ratio"], color="#0ea5e9")
-            ax.set_title("Top 10 - Sharpe Ratio")
-            ax.set_ylabel("Sharpe Ratio")
-            ax.set_xticks(range(len(top_10)))
-            ax.set_xticklabels(range(len(top_10)), rotation=45)
-
-            # Total Return
-            ax = axes[0, 1]
-            ax.bar(range(len(top_10)), top_10["total_return"], color="#10b981")
-            ax.set_title("Top 10 - Total Return (%)")
-            ax.set_ylabel("Return (%)")
-            ax.set_xticks(range(len(top_10)))
-            ax.set_xticklabels(range(len(top_10)), rotation=45)
-
-            # Max Drawdown
-            ax = axes[1, 0]
-            ax.bar(range(len(top_10)), top_10["max_drawdown"], color="#ef4444")
-            ax.set_title("Top 10 - Max Drawdown (%)")
-            ax.set_ylabel("Drawdown (%)")
-            ax.set_xticks(range(len(top_10)))
-            ax.set_xticklabels(range(len(top_10)), rotation=45)
-
-            # Win Rate
-            ax = axes[1, 1]
-            ax.bar(range(len(top_10)), top_10["win_rate"], color="#f59e0b")
-            ax.set_title("Top 10 - Win Rate (%)")
-            ax.set_ylabel("Win Rate (%)")
-            ax.set_xticks(range(len(top_10)))
-            ax.set_xticklabels(range(len(top_10)), rotation=45)
-
-            plt.tight_layout()
-            plt.savefig(output_path, dpi=150)
-            plt.close()
-
-            logger.info(f"Optimization plot saved: {output_path}")
-
-        except Exception as e:
-            logger.error(f"Error plotting optimization results: {e}")
-
-    def optimize_bayesian(
-        self,
-        param_ranges: Dict[str, Tuple],
-        metric_to_optimize: str = "sharpe_ratio",
-        n_trials: int = 100,
-        initial_balance: float = 10000.0,
-    ) -> Tuple[Dict, Dict, optuna.Study]:
-        """
-        Run Bayesian optimization using Optuna
-
-        Args:
-            param_ranges: Dictionary of parameter names and (min, max) tuples
-            metric_to_optimize: Metric to maximize
-            n_trials: Number of optimization trials
-            initial_balance: Starting balance
-
-        Returns:
-            Tuple of (best_params, best_metrics, study)
-        """
-        logger.info(f"Starting Bayesian optimization with {n_trials} trials")
-
-        def objective(trial):
-            """Objective function for Optuna"""
-            # Suggest parameters
-            params = {}
-            for param_name, (min_val, max_val) in param_ranges.items():
-                if isinstance(min_val, int) and isinstance(max_val, int):
-                    params[param_name] = trial.suggest_int(param_name, min_val, max_val)
-                else:
-                    params[param_name] = trial.suggest_float(param_name, min_val, max_val)
-
-            try:
-                # Run backtest with these parameters
-                runner = StrategyRunner(
-                    initial_balance=initial_balance,
-                    trading_fee_percent=params.get("trading_fee_percent", 0.1),
-                    max_risk_per_trade=params.get("max_risk_per_trade", 2.0),
-                )
-
-                # Run backtest with strategy function
-                result = runner.run_backtest(
-                    data=self.candles_df,
-                    symbol=self.candles_df.attrs.get("symbol", "BTC/USDT"),
-                    timeframe=self.candles_df.attrs.get("timeframe", "1h"),
-                    strategy_func=strategy_rsi_macd_ema,
-                    strategy_params=params,
-                )
-
-                # Convert BacktestResult to format expected by PerformanceMetrics
-                trades_list = [
-                    {
-                        "symbol": trade.symbol,
-                        "side": trade.side,
-                        "entry_price": trade.entry_price,
-                        "exit_price": trade.exit_price,
-                        "quantity": trade.quantity,
-                        "entry_time": trade.entry_time,
-                        "exit_time": trade.exit_time,
-                        "pnl": trade.pnl,
-                        "pnl_percent": trade.pnl_percent,
-                        "fee": trade.fee,
-                        "exit_reason": trade.exit_reason,
-                        "holding_period": trade.holding_period,
-                    }
-                    for trade in result.trades
-                ]
-
-                equity_list = [
-                    {
-                        "timestamp": point["timestamp"],
-                        "equity": point["balance"],
-                        "price": point["price"],
-                    }
-                    for point in result.equity_curve
-                ]
 
                 # Calculate metrics
-                metrics_calc = PerformanceMetrics(trades_list, equity_list)
-                metrics = metrics_calc.calculate_all()
+                metrics = self.metrics_calc.calculate_all(result)
 
-                # Return the metric to optimize
-                return metrics.get(metric_to_optimize, 0)
+                # Skip jika tidak ada trade
+                if metrics["total_trades"] < 10:
+                    continue
+
+                results.append({
+                    "parameters": params,
+                    "metrics": metrics,
+                    "optimize_value": metrics.get(optimize_for, 0),
+                })
+
+                if (i + 1) % 10 == 0:
+                    logger.info(f"   Progress: {i+1}/{len(combinations)}")
 
             except Exception as e:
-                logger.error(f"Error in trial: {e}")
-                return 0
+                logger.debug(f"Error with params {params}: {e}")
+                continue
 
-        # Create study
-        study = optuna.create_study(
-            direction="maximize",
-            study_name="strategy_optimization",
-        )
+        # Sort by optimize value (descending)
+        results.sort(key=lambda x: x["optimize_value"], reverse=True)
 
-        # Optimize
+        logger.info(f"✅ Grid search complete: {len(results)} valid results")
+        if results:
+            logger.info(f"   Best {optimize_for}: {results[0]['optimize_value']:.2f}")
+            logger.info(f"   Best params: {results[0]['parameters']}")
+
+        return results
+
+    def optuna_optimize(
+        self,
+         pd.DataFrame,
+        symbol: str,
+        timeframe: str,
+        strategy_func: Callable,
+        param_space: Dict[str, Tuple],
+        optimize_for: str = "sharpe_ratio",
+        n_trials: int = 50,
+    ) -> Dict:
+        """
+        Optimasi dengan Optuna (lebih efisien dari grid search)
+        
+        Args:
+            param_space: Dict dengan (min, max) untuk setiap parameter
+                        Contoh: {"rsi_period": (10, 30), "rsi_oversold": (20, 40)}
+        """
+        try:
+            import optuna
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
+        except ImportError:
+            logger.error("❌ Optuna not installed. Run: pip install optuna")
+            return {}
+
+        def objective(trial):
+            # Sample parameters
+            params = {}
+            for param_name, (low, high) in param_space.items():
+                params[param_name] = trial.suggest_int(param_name, low, high)
+
+            try:
+                result = self.runner.run_backtest(
+                    data=data,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    strategy_func=strategy_func,
+                    strategy_params=params,
+                )
+                metrics = self.metrics_calc.calculate_all(result)
+
+                if metrics["total_trades"] < 10:
+                    return -999  # Penalty untuk trade terlalu sedikit
+
+                return metrics.get(optimize_for, 0)
+            except Exception:
+                return -999
+
+        logger.info(f"🔬 Optuna optimization: {n_trials} trials")
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
-        # Get best results
         best_params = study.best_params
         best_value = study.best_value
 
-        logger.info(f"Bayesian optimization complete. Best {metric_to_optimize}: {best_value:.2f}")
-        logger.info(f"Best parameters: {best_params}")
+        logger.info(f"✅ Best {optimize_for}: {best_value:.2f}")
+        logger.info(f"   Best params: {best_params}")
 
-        # Run final backtest with best parameters
-        runner = StrategyRunner(
-            initial_balance=initial_balance,
-            trading_fee_percent=best_params.get("trading_fee_percent", 0.1),
-            max_risk_per_trade=best_params.get("max_risk_per_trade", 2.0),
-        )
-
-        result = runner.run_backtest(
-            data=self.candles_df,
-            symbol=self.candles_df.attrs.get("symbol", "BTC/USDT"),
-            timeframe=self.candles_df.attrs.get("timeframe", "1h"),
-            strategy_func=strategy_rsi_macd_ema,
-            strategy_params=best_params,
-        )
-
-        # Calculate metrics dengan API baru
-        metrics_calc = PerformanceMetrics()
-        best_metrics = metrics_calc.calculate_all(result)
-
-        return best_params, best_metrics, study
-
-    def plot_optimization_history(self, study: optuna.Study, output_path: str = "optimization_history.png"):
-        """
-        Plot optimization history from Optuna study
-
-        Args:
-            study: Optuna study object
-            output_path: Path to save plot
-        """
-        try:
-            import matplotlib.pyplot as plt
-
-            # Get optimization history
-            history = study.trials_dataframe()
-
-            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-            # 1. Optimization history
-            ax = axes[0, 0]
-            ax.plot(history["number"], history["value"], marker="o", color="#0ea5e9")
-            ax.set_title("Optimization History")
-            ax.set_xlabel("Trial Number")
-            ax.set_ylabel("Objective Value")
-            ax.grid(True, alpha=0.3)
-
-            # 2. Best value over trials
-            ax = axes[0, 1]
-            best_values = history["value"].cummax()
-            ax.plot(history["number"], best_values, marker="o", color="#10b981")
-            ax.set_title("Best Value Over Trials")
-            ax.set_xlabel("Trial Number")
-            ax.set_ylabel("Best Objective Value")
-            ax.grid(True, alpha=0.3)
-
-            # 3. Parameter importance (if available)
-            ax = axes[1, 0]
-            try:
-                importance = optuna.importance.get_param_importances(study)
-                params = list(importance.keys())
-                values = list(importance.values())
-                ax.barh(params, values, color="#f59e0b")
-                ax.set_title("Parameter Importance")
-                ax.set_xlabel("Importance")
-            except:
-                ax.text(0.5, 0.5, "Parameter importance\nnot available", 
-                       ha='center', va='center', transform=ax.transAxes)
-                ax.set_title("Parameter Importance")
-
-            # 4. Trial distribution
-            ax = axes[1, 1]
-            ax.hist(history["value"], bins=20, color="#6366f1", alpha=0.7)
-            ax.set_title("Objective Value Distribution")
-            ax.set_xlabel("Objective Value")
-            ax.set_ylabel("Frequency")
-            ax.grid(True, alpha=0.3)
-
-            plt.tight_layout()
-            plt.savefig(output_path, dpi=150)
-            plt.close()
-
-            logger.info(f"Optimization history plot saved: {output_path}")
-
-        except Exception as e:
-            logger.error(f"Error plotting optimization history: {e}")
+        return {
+            "best_params": best_params,
+            "best_value": best_value,
+            "all_trials": [
+                {"params": t.params, "value": t.value}
+                for t in study.trials
+                if t.value is not None and t.value > -999
+            ],
+        }
